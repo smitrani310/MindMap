@@ -47,6 +47,14 @@ def handle_message(msg_data):
         elif action == 'edit_modal':
             st.session_state['edit_node'] = int(pl['id'])
             st.rerun()
+        elif action == 'select_node':
+            st.session_state['selected_node'] = int(pl['id'])
+            st.rerun()
+        elif action == 'center_node':
+            node_id = int(pl['id'])
+            if node_id in {n['id'] for n in ideas}:
+                set_central(node_id)
+                st.rerun()
         elif action == 'delete':
             save_state_to_history()
             node_id = int(pl['id'])
@@ -59,6 +67,9 @@ def handle_message(msg_data):
             set_ideas([n for n in ideas if n['id'] not in to_remove])
             if get_central() in to_remove:
                 set_central(None)
+            # Also clear selected node if it was deleted
+            if 'selected_node' in st.session_state and st.session_state['selected_node'] in to_remove:
+                st.session_state['selected_node'] = None
             st.rerun()
         elif action == 'reparent':
             save_state_to_history()

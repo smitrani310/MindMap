@@ -1,11 +1,10 @@
-"""streamlit_mindmap_app.py – v5.2 Enhanced Mind Map with Stability Improvements
+"""streamlit_mindmap_app.py – v5.3 Enhanced Mind Map with Stability Improvements
 Added features:
-- Native component messaging for smoother UI updates
-- JS stability & cleanup with proper error handling
-- Explicit circular-parent checks to prevent loops
-- Centralized error handling
-- Strict integer ID management & traceability
 - Data persistence with JSON file storage
+- Expanded canvas option
+- Improved node search in sidebar
+- Fixed interaction on Windows/Chrome
+- Cleaned up code structure
 
 Original features:
 - Tags/categories for nodes with color coding
@@ -29,6 +28,17 @@ import streamlit as st
 from pyvis.network import Network
 import streamlit.components.v1 as components
 
+# Import refactored modules first
+from src.state import get_store, get_ideas, get_central, get_next_id, increment_next_id, get_current_theme
+from src.state import set_ideas as original_set_ideas
+from src.state import add_idea as original_add_idea
+from src.state import set_central as original_set_central
+from src.state import set_current_theme as original_set_current_theme
+from src.history import save_state_to_history, can_undo, can_redo, perform_undo, perform_redo
+from src.utils import hex_to_rgb, get_theme, recalc_size, get_edge_color, get_urgency_color, get_tag_color
+from src.themes import THEMES, TAGS, URGENCY_SIZE, PRIMARY_NODE_BORDER, RGBA_ALPHA
+from src.handlers import handle_message, handle_exception, is_circular
+
 # Data persistence file path
 DATA_FILE = "mindmap_data.json"
 
@@ -50,11 +60,31 @@ def save_data(data):
     except Exception as e:
         st.error(f"Error saving data: {str(e)}")
 
+# Override state management functions to add data persistence
+def set_ideas(ideas: List[Dict]):
+    original_set_ideas(ideas)
+    save_data(get_store())
+
+def add_idea(node: Dict):
+    original_add_idea(node)
+    save_data(get_store())
+
+def set_central(mid: Optional[int]):
+    original_set_central(mid)
+    save_data(get_store())
+
+def set_current_theme(theme_name: str):
+    original_set_current_theme(theme_name)
+    save_data(get_store())
+
 # Initialize session state with persisted data
 if 'store' not in st.session_state:
     persisted_data = load_data()
     if persisted_data:
         st.session_state['store'] = persisted_data
+        # Update session state with canvas expansion setting if available
+        if 'canvas_expanded' in persisted_data.get('settings', {}):
+            st.session_state['canvas_expanded'] = persisted_data['settings']['canvas_expanded']
     else:
         st.session_state['store'] = {
             'ideas': [],
@@ -62,329 +92,23 @@ if 'store' not in st.session_state:
             'next_id': 0,
             'history': [],
             'history_index': -1,
-            'current_theme': 'default'
-        }
-
-# Import refactored modules
-from src.state import get_store, get_ideas, set_ideas, add_idea, get_central, set_central, get_next_id, increment_next_id, get_current_theme, set_current_theme
-from src.history import save_state_to_history, can_undo, can_redo, perform_undo, perform_redo
-from src.utils import hex_to_rgb, get_theme, recalc_size, get_edge_color, get_urgency_color, get_tag_color
-from src.themes import THEMES, TAGS, URGENCY_SIZE, PRIMARY_NODE_BORDER, RGBA_ALPHA
-from src.handlers import handle_message, handle_exception
-
-# ---------------- State Management Helpers ----------------
-
-def get_store() -> Dict:
-    if 'store' not in st.session_state:
-        st.session_state['store'] = {
-            'ideas': [],
-            'central': None,
-            'next_id': 0,
-            'history': [],
-            'history_index': -1,
-            'current_theme': 'default'
-        }
-    return st.session_state['store']
-
-def get_ideas() -> List[Dict]:
-    return get_store()['ideas']
-
-def set_ideas(ideas: List[Dict]):
-    store = get_store()
-    # Save current state to history before changing
-    save_state_to_history()
-    store['ideas'] = ideas
-    save_data(store)  # Save to file after change
-
-def add_idea(node: Dict):
-    store = get_store()
-    # Save current state to history before changing
-    save_state_to_history()
-    store['ideas'].append(node)
-    save_data(store)  # Save to file after change
-
-def get_central() -> Optional[int]:
-    return get_store()['central']
-
-def set_central(mid: Optional[int]):
-    save_state_to_history()
-    get_store()['central'] = mid
-    save_data(get_store())  # Save to file after change
-
-def get_next_id() -> int:
-    return get_store()['next_id']
-
-def increment_next_id():
-    store = get_store()
-    store['next_id'] += 1
-
-def get_current_theme() -> str:
-    return get_store().get('current_theme', 'default')
-
-def set_current_theme(theme_name: str):
-    get_store()['current_theme'] = theme_name
-    save_data(get_store())  # Save to file after change
-
-# ---------------- Error Handling ----------------
-
-def handle_exception(e):
-    """Centralized error handling"""
-    st.error(f"An error occurred: {str(e)}")
-    st.exception(e)
-
-# ---------------- Circular Reference Check ----------------
-
-def is_circular(child_id: int, parent_id: int, nodes: List[Dict]) -> bool:
-    """Check if making child_id a child of parent_id would create a circular reference"""
-    if child_id == parent_id:
-        return True
-
-    # Walk up the parent chain to check if child_id appears
-    current_id = parent_id
-    visited = set([current_id])
-
-    while True:
-        parent_node = next((n for n in nodes if n['id'] == current_id), None)
-        if not parent_node or parent_node.get('parent') is None:
-            return False
-
-        current_id = parent_node['parent']
-
-        # If we've seen this ID before, there's already a cycle
-        if current_id in visited:
-            return True
-
-        # If the current parent is the child we're checking, it would create a cycle
-        if current_id == child_id:
-            return True
-
-        visited.add(current_id)
-
-# ---------------- History Management for Undo/Redo ----------------
-
-def save_state_to_history():
-    """Save current state to history for undo/redo functionality"""
-    store = get_store()
-    # Only save if we have something to save
-    if len(store['ideas']) > 0 or store['history_index'] >= 0:
-        # If we're not at the end of history, truncate future history
-        if store['history_index'] < len(store['history']) - 1:
-            store['history'] = store['history'][:store['history_index'] + 1]
-
-        # Create a deep copy of the current state
-        current_state = {
-            'ideas': deepcopy(store['ideas']),
-            'central': store['central']
-        }
-
-        # Add to history and update index
-        store['history'].append(current_state)
-        store['history_index'] = len(store['history']) - 1
-
-        # Limit history size to avoid memory issues
-        max_history = 30
-        if len(store['history']) > max_history:
-            store['history'] = store['history'][-max_history:]
-            store['history_index'] = len(store['history']) - 1
-
-def can_undo() -> bool:
-    """Check if undo is available"""
-    store = get_store()
-    return store['history_index'] > 0
-
-def can_redo() -> bool:
-    """Check if redo is available"""
-    store = get_store()
-    return 0 <= store['history_index'] < len(store['history']) - 1
-
-def perform_undo():
-    """Restore previous state from history"""
-    store = get_store()
-    if can_undo():
-        store['history_index'] -= 1
-        previous_state = store['history'][store['history_index']]
-        store['ideas'] = deepcopy(previous_state['ideas'])
-        store['central'] = previous_state['central']
-        return True
-    return False
-
-def perform_redo():
-    """Restore next state from history"""
-    store = get_store()
-    if can_redo():
-        store['history_index'] += 1
-        next_state = store['history'][store['history_index']]
-        store['ideas'] = deepcopy(next_state['ideas'])
-        store['central'] = next_state['central']
-        return True
-    return False
-
-# ---------------- Constants & Helpers ----------------
-RGBA_ALPHA = 0.5
-
-# Predefined themes
-THEMES = {
-    'default': {
-        'background': '#FFFFFF',
-        'urgency_colors': {'high': '#e63946', 'medium': '#f4a261', 'low': '#2a9d8f'},
-        'edge_colors': {'default': '#848484', 'supports': '#2a9d8f', 'contradicts': '#e63946', 'relates': '#f4a261'}
-    },
-    'dark': {
-        'background': '#2E3440',
-        'urgency_colors': {'high': '#BF616A', 'medium': '#EBCB8B', 'low': '#A3BE8C'},
-        'edge_colors': {'default': '#D8DEE9', 'supports': '#A3BE8C', 'contradicts': '#BF616A', 'relates': '#EBCB8B'}
-    },
-    'pastel': {
-        'background': '#F8F9FA',
-        'urgency_colors': {'high': '#FF9AA2', 'medium': '#FFB347', 'low': '#98DDCA'},
-        'edge_colors': {'default': '#9BA4B4', 'supports': '#98DDCA', 'contradicts': '#FF9AA2', 'relates': '#FFB347'}
-    },
-    'vibrant': {
-        'background': '#FFFFFF',
-        'urgency_colors': {'high': '#FF1E56', 'medium': '#FFAC41', 'low': '#16C79A'},
-        'edge_colors': {'default': '#666666', 'supports': '#16C79A', 'contradicts': '#FF1E56', 'relates': '#FFAC41'}
-    }
-}
-
-# Tags with colors
-TAGS = {
-    'idea': '#4361EE',
-    'task': '#3A0CA3',
-    'question': '#7209B7',
-    'project': '#F72585',
-    'note': '#4CC9F0',
-    'research': '#560BAD',
-    'personal': '#F3722C',
-    'work': '#F8961E'
-}
-
-URGENCY_SIZE = {'high': 300, 'medium': 200, 'low': 120}
-PRIMARY_NODE_BORDER = 4
-hex_to_rgb = lambda h: tuple(int(h.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-
-def get_theme():
-    """Get the current theme colors"""
-    return THEMES[get_current_theme()]
-
-def recalc_size(node: Dict):
-    """Calculate the size of a node based on urgency"""
-    node['size'] = URGENCY_SIZE.get(node.get('urgency', 'low'), 120)
-
-def get_edge_color(edge_type: str) -> str:
-    """Get the color for an edge based on relationship type"""
-    return get_theme()['edge_colors'].get(edge_type, get_theme()['edge_colors']['default'])
-
-def get_urgency_color(urgency: str) -> str:
-    """Get the color for a node based on urgency"""
-    return get_theme()['urgency_colors'].get(urgency, get_theme()['urgency_colors']['low'])
-
-def get_tag_color(tag: str) -> str:
-    """Get the color for a tag"""
-    return TAGS.get(tag, '#808080')  # Default gray for unknown tags
-
-# ---------------- Message Handling ----------------
-
-def handle_message(msg_data):
-    """Process messages from the JavaScript frontend"""
-    try:
-        action, pl = msg_data['type'], msg_data['payload']
-        ideas = get_ideas()
-
-        if action == 'undo':
-            if perform_undo():
-                st.rerun()
-
-        elif action == 'redo':
-            if perform_redo():
-                st.rerun()
-
-        elif action == 'pos':
-            save_state_to_history()
-            for k, v in pl.items():
-                try:
-                    node_id = int(k)
-                    node = next((n for n in ideas if n['id'] == node_id), None)
-                    if node:
-                        node['x'], node['y'] = v['x'], v['y']
-                except (ValueError, TypeError) as e:
-                    st.error(f"Invalid node ID: {k}")
-
-        elif action == 'edit_modal':
-            st.session_state['edit_node'] = int(pl['id'])
-            st.rerun()
-
-        elif action == 'select_node':
-            st.session_state['selected_node'] = int(pl['id'])
-            st.rerun()
-
-        elif action == 'center_node':
-            node_id = int(pl['id'])
-            if node_id in {n['id'] for n in ideas}:
-                set_central(node_id)
-                st.rerun()
-
-        elif action == 'delete':
-            save_state_to_history()
-            node_id = int(pl['id'])
-
-            # Get node and all its descendants
-            to_remove = set()
-
-            def collect_descendants(node_id):
-                to_remove.add(node_id)
-                for child in [n for n in ideas if n.get('parent') == node_id]:
-                    collect_descendants(child['id'])
-
-            collect_descendants(node_id)
-
-            # Remove collected nodes
-            set_ideas([n for n in ideas if n['id'] not in to_remove])
-            if get_central() in to_remove:
-                set_central(None)
-            if st.session_state.get('selected_node') in to_remove:
-                st.session_state['selected_node'] = None
-            st.rerun()  # Force rerun after deletion
-
-        elif action == 'reparent':
-            save_state_to_history()
-            child_id = int(pl['id'])
-            parent_id = int(pl['parent'])
-
-            child = next((n for n in ideas if n['id'] == child_id), None)
-
-            # Check for circular references
-            if is_circular(child_id, parent_id, ideas):
-                st.warning("Cannot create circular parent-child relationships")
-                return
-
-            if child and parent_id in {n['id'] for n in ideas}:
-                child['parent'] = parent_id
-                # Keep the edge type or set to default if none
-                if not child.get('edge_type'):
-                    child['edge_type'] = 'default'
-                st.rerun()  # Force rerun after reparenting
-
-        elif action == 'new_node':
-            save_state_to_history()
-            central = get_central()
-            new_node = {
-                'id': get_next_id(),
-                'label': pl['label'],
-                'description': '',
-                'urgency': 'medium',
-                'tag': '',
-                'parent': central,
-                'edge_type': 'default' if central is not None else None,
-                'x': None,
-                'y': None
+            'current_theme': 'default',
+            'settings': {
+                'edge_length': 100,
+                'spring_strength': 0.5,
+                'size_multiplier': 1.0,
+                'canvas_expanded': False
             }
-            recalc_size(new_node)
-            add_idea(new_node)
-            increment_next_id()
-            st.rerun()  # Force rerun to refresh UI
-
-    except Exception as e:
-        handle_exception(e)
+        }
+    
+    # Initialize settings in session state for easy access
+    if 'settings' not in get_store():
+        get_store()['settings'] = {
+            'edge_length': 100,
+            'spring_strength': 0.5,
+            'size_multiplier': 1.0,
+            'canvas_expanded': False
+        }
 
 # ---------------- Main App ----------------
 try:
@@ -415,12 +139,18 @@ try:
             index=list(THEMES.keys()).index(get_current_theme())
         )
         
+        # Get settings with defaults
+        settings = get_store().get('settings', {})
+        default_edge_length = settings.get('edge_length', 100)
+        default_spring_strength = settings.get('spring_strength', 0.5)
+        default_size_multiplier = settings.get('size_multiplier', 1.0)
+        
         # Add connection length slider
         edge_length = st.slider(
             "Connection Length", 
             min_value=50, 
             max_value=300, 
-            value=100, 
+            value=default_edge_length,
             step=10,
             help="Adjust the length of connections between nodes"
         )
@@ -430,7 +160,7 @@ try:
             "Connection Strength",
             min_value=0.1,
             max_value=1.0,
-            value=0.5,
+            value=default_spring_strength,
             step=0.1,
             help="Adjust how strongly connected nodes pull together (higher = tighter grouping)"
         )
@@ -440,10 +170,21 @@ try:
             "Urgency Size Impact",
             min_value=1.0,
             max_value=3.0,
-            value=1.0,
+            value=default_size_multiplier,
             step=0.2,
             help="Enhance the size difference between urgency levels (higher = more pronounced difference)"
         )
+        
+        # Save settings if changed
+        if (edge_length != default_edge_length or 
+            spring_strength != default_spring_strength or 
+            size_multiplier != default_size_multiplier):
+            get_store()['settings'] = {
+                'edge_length': edge_length,
+                'spring_strength': spring_strength,
+                'size_multiplier': size_multiplier
+            }
+            save_data(get_store())
         
         if selected_theme != get_current_theme():
             set_current_theme(selected_theme)
@@ -470,6 +211,7 @@ try:
                         count += 1
                 st.sidebar.success(f"Replaced {count} instances")
                 if count > 0:
+                    save_data(get_store())
                     st.rerun()
 
     # Import / Export JSON
@@ -496,6 +238,7 @@ try:
                     set_ideas(data)
                     get_store()['next_id'] = max((i['id'] for i in data), default=-1) + 1
                     set_central(next((i['id'] for i in data if i.get('is_central')), None))
+                    save_data(get_store())
                     st.success("Imported bubbles from JSON")
             except Exception as e:
                 handle_exception(e)
@@ -546,16 +289,19 @@ try:
             recalc_size(new_node)
             add_idea(new_node)
             increment_next_id()
+            save_data(get_store())
             st.rerun()
 
     # Undo/Redo buttons
     undo_col, redo_col = st.sidebar.columns(2)
     if undo_col.button("↩️ Undo", disabled=not can_undo()):
         if perform_undo():
+            save_data(get_store())
             st.rerun()
 
     if redo_col.button("↪️ Redo", disabled=not can_redo()):
         if perform_redo():
+            save_data(get_store())
             st.rerun()
 
     # Keyboard Shortcuts Info
@@ -586,7 +332,28 @@ try:
         """, unsafe_allow_html=True)
         
         with st.sidebar.expander("✏️ Node List"):
-            for node in ideas:
+            # Add search bar inside Node List
+            node_search = st.text_input("🔍 Filter nodes", key="node_list_search")
+            
+            # Filter nodes based on search
+            filtered_ideas = ideas
+            if node_search:
+                filtered_ideas = [
+                    node for node in ideas 
+                    if node_search.lower() in node['label'].lower() or 
+                    (node.get('description') and node_search.lower() in node['description'].lower()) or
+                    (node.get('tag') and node_search.lower() in node['tag'].lower())
+                ]
+                
+                if not filtered_ideas:
+                    st.info(f"No nodes match '{node_search}'")
+            
+            # Display count of filtered nodes
+            if node_search and filtered_ideas:
+                st.caption(f"Showing {len(filtered_ideas)} of {len(ideas)} nodes")
+            
+            # List the filtered nodes
+            for node in filtered_ideas:
                 # More balanced column widths for better alignment
                 col1, col2, col3, col4 = st.columns([2.5, 1, 1, 1])
                 label_display = node['label']
@@ -594,18 +361,18 @@ try:
                     label_display = f"[{node['tag']}] {label_display}"
                 col1.write(label_display)
                 
-                # Use smaller emoji icons for better alignment
-                if col2.button("🎯", key=f"center_{node['id']}", help="Center this node"):
-                    st.session_state['center_node'] = node['id']
-                    st.rerun()
+                # Use smaller emoji icons for better alignment with proper classes
+                if col2.button("🎯", key=f"center_{node['id']}", help="Center this node", 
+                              on_click=lambda id=node['id']: st.session_state.update({'center_node': id})):
+                    pass
                 
-                if col3.button("✏️", key=f"edit_{node['id']}", help="Edit this node"):
-                    st.session_state['edit_node'] = node['id']
-                    st.rerun()
+                if col3.button("✏️", key=f"edit_{node['id']}", help="Edit this node",
+                              on_click=lambda id=node['id']: st.session_state.update({'edit_node': id})):
+                    pass
                 
-                if col4.button("🗑️", key=f"delete_{node['id']}", help="Delete this node"):
-                    st.session_state['delete_node'] = node['id']
-                    st.rerun()
+                if col4.button("🗑️", key=f"delete_{node['id']}", help="Delete this node",
+                              on_click=lambda id=node['id']: st.session_state.update({'delete_node': id})):
+                    pass
 
     # Handle button actions from session state
     if 'center_node' in st.session_state:
@@ -678,7 +445,6 @@ try:
                     if new_parent.strip():
                         new_pid = next((i['id'] for i in get_ideas() if i['label'].strip() == new_parent.strip()), None)
                         if new_pid is not None and new_pid != node['id']:  # Prevent self-reference
-                            from src.handlers import is_circular
                             if not is_circular(node['id'], new_pid, ideas):
                                 node['parent'] = new_pid
                                 node['edge_type'] = new_edge_type
@@ -690,6 +456,7 @@ try:
                         node['parent'] = None
                         node['edge_type'] = 'default'
 
+                    save_data(get_store())
                     st.session_state['edit_node'] = None
                     st.rerun()
 
@@ -725,7 +492,12 @@ try:
     canvas_expanded = st.session_state.get('canvas_expanded', False)
     expand_button = st.button("🔍 Expand Canvas" if not canvas_expanded else "🔍 Collapse Canvas")
     if expand_button:
-        st.session_state['canvas_expanded'] = not canvas_expanded
+        # Toggle canvas expansion
+        canvas_expanded = not canvas_expanded
+        # Update both session state and store
+        st.session_state['canvas_expanded'] = canvas_expanded
+        get_store()['settings']['canvas_expanded'] = canvas_expanded
+        save_data(get_store())
         st.rerun()
 
     # Set canvas height based on expansion state
@@ -796,210 +568,133 @@ try:
             edge_color = get_edge_color(edge_type)
             net.add_edge(pid, n['id'], arrows='to', color=edge_color, title=edge_type, length=edge_length)
 
-    # JavaScript for interactions - IMPROVED with URL param messaging and error handling
+    # JavaScript for interactions - simplified approach
     js = textwrap.dedent(f"""
     const nodes = network.body.data.nodes;
     const edges = network.body.data.edges;
     const highlight = '{search_q.lower()}';
 
-    // URL parameter-based messaging
+    // Create a hidden form for message passing
+    const formDiv = document.createElement('div');
+    formDiv.style.display = 'none';
+    formDiv.innerHTML = `
+        <form id="message-form" action="" method="get">
+            <input type="hidden" id="message-type" name="action" value="">
+            <input type="hidden" id="message-payload" name="payload" value="">
+            <button type="submit" id="message-submit">Submit</button>
+        </form>
+    `;
+    document.body.appendChild(formDiv);
+
+    // Message passing via form submission
     function send(action, payload) {{
         try {{
-            const data = JSON.stringify({{type: action, payload: payload}});
-            // Use URL parameters for communication
-            const url = new URL(window.location.href);
-            url.searchParams.set('msg', data);
-            window.history.pushState({{}}, '', url.toString());
-            // Force a page reload to process the message
-            window.location.reload();
+            document.getElementById('message-type').value = action;
+            document.getElementById('message-payload').value = JSON.stringify(payload);
+            document.getElementById('message-form').submit();
         }} catch (error) {{
             console.error("Failed to send message:", error);
         }}
     }}
 
-    // Initialize physics to apply once then stabilize
+    // Initialize physics
     network.once('afterDrawing', () => {{
-        try {{
-            network.stabilize(100);  // Stabilize for better initial layout
-            setTimeout(() => network.physics.stabilize(), 1000); // Additional stabilization
-            setTimeout(() => network.physics.disable(), 2000); // Then disable physics
-        }} catch (error) {{
-            console.error("Physics initialization error:", error);
-        }}
+        network.stabilize(100);
     }});
 
-    // Handle node dragging
-    network.on('dragEnd', params => {{
-        try {{
-            const pos = network.getPositions(); 
+    // Handle node dragging (keep this simple)
+    network.on('dragEnd', (params) => {{
+        if (params.nodes.length === 1) {{
+            const pos = {{}};
+            const id = params.nodes[0];
+            const position = network.getPositions([id])[id];
+            pos[id] = position;
             send('pos', pos);
-            
-            // Improved reparenting detection with better threshold
-            if (params.nodes.length === 1) {{
-                const id = params.nodes[0]; 
-                const p = pos[id];
-                const others = Object.entries(pos)
-                    .filter(([nodeId, _]) => parseInt(nodeId) !== id)
-                    .map(([nodeId, pos]) => {{ 
-                        return {{ 
-                            id: parseInt(nodeId), 
-                            dist: Math.hypot(p.x - pos.x, p.y - pos.y) 
-                        }}; 
-                    }})
-                    .sort((a, b) => a.dist - b.dist);
-                
-                if (others.length && others[0].dist < 100) {{
-                    send('reparent', {{ id, parent: others[0].id }});
-                }}
-            }}
-        }} catch (error) {{
-            console.error("Error in dragEnd handler:", error);
         }}
     }});
 
-    // Handle click for node details
-    network.on('click', params => {{
-        try {{
-            if (params.nodes.length === 1) {{
-                const id = params.nodes[0];
-                send('select_node', {{ id }});
-            }}
-        }} catch (error) {{
-            console.error("Error in click handler:", error);
+    // Click for node details - simplest approach
+    network.on('click', (params) => {{
+        if (params.nodes.length === 1) {{
+            const id = params.nodes[0];
+            send('select_node', {{ id }});
         }}
     }});
 
-    // Handle double-click for edit
-    network.on('doubleClick', params => {{
-        try {{
-            if (params.nodes.length === 1) {{
-                const id = params.nodes[0];
-                send('edit_modal', {{ id }});
-            }}
-        }} catch (error) {{
-            console.error("Error in doubleClick handler:", error);
+    // Double-click for edit - simplest approach
+    network.on('doubleClick', (params) => {{
+        if (params.nodes.length === 1) {{
+            const id = params.nodes[0];
+            send('edit_modal', {{ id }});
         }}
     }});
 
-    // Improved right-click delete
-    network.on('oncontext', params => {{
-        try {{
-            params.event.preventDefault();  // Prevent default context menu
-            if (params.nodes.length === 1) {{
-                const id = parseInt(params.nodes[0]);
-                if (confirm('Delete this bubble?')) {{
-                    send('delete', {{ id }});
-                }}
+    // Context menu for delete - simplest approach that works on Windows/Chrome
+    network.on('contextmenu', (params) => {{
+        params.event.preventDefault();
+        if (params.nodes.length === 1) {{
+            const id = params.nodes[0];
+            if (confirm('Delete this bubble?')) {{
+                send('delete', {{ id: id }});
             }}
-        }} catch (error) {{
-            console.error("Error in oncontext handler:", error);
         }}
+        return false;
     }});
 
-    // Add event listener for right-click
-    network.on('oncontext', params => {{
-        try {{
-            params.event.preventDefault();
-            if (params.nodes.length === 1) {{
-                const id = parseInt(params.nodes[0]);
-                if (confirm('Delete this bubble?')) {{
-                    send('delete', {{ id }});
-                }}
-            }}
-        }} catch (error) {{
-            console.error("Error in right-click handler:", error);
-        }}
-    }});
-
-    // Add event listener for center button clicks
-    document.addEventListener('click', (e) => {{
-        try {{
-            if (e.target && e.target.classList.contains('center-button')) {{
-                const id = parseInt(e.target.dataset.id);
-                send('center_node', {{ id }});
-            }}
-        }} catch (error) {{
-            console.error("Error in center button handler:", error);
-        }}
-    }});
-
-    // Add event listener for delete button clicks
-    document.addEventListener('click', (e) => {{
-        try {{
-            if (e.target && e.target.classList.contains('delete-button')) {{
-                const id = parseInt(e.target.dataset.id);
-                if (confirm('Delete this bubble?')) {{
-                    send('delete', {{ id }});
-                }}
-            }}
-        }} catch (error) {{
-            console.error("Error in delete button handler:", error);
-        }}
-    }});
-
-    // Improved keyboard shortcuts with better focus handling
+    // Keyboard shortcuts with better handling
     document.addEventListener('keydown', (e) => {{
-        try {{
-            // Get the network container
-            const networkDiv = document.getElementById('mynetwork');
-            
-            // Only process if focus is on the document body or network canvas
-            const focused = document.activeElement === document.body || 
-                          networkDiv.contains(document.activeElement) ||
-                          document.activeElement.tagName === 'BODY';
-            
-            if (focused) {{
-                // Ctrl+Z for undo
-                if ((e.ctrlKey || e.metaKey) && e.key === 'z') {{
-                    e.preventDefault();
-                    send('undo', {{}});
-                }}
-                // Ctrl+Y for redo
-                else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {{
-                    e.preventDefault();
-                    send('redo', {{}});
-                }}
-                // Ctrl+N for new node
-                else if ((e.ctrlKey || e.metaKey) && e.key === 'n') {{
-                    e.preventDefault();
-                    const label = prompt('New node label:');
-                    if (label && label.trim()) {{
-                        send('new_node', {{ label }});
-                    }}
+        // Only process if not in a text field
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {{
+            // Ctrl+Space to center selected node
+            if (e.ctrlKey && e.code === 'Space') {{
+                const selectedNodes = network.getSelectedNodes();
+                if (selectedNodes.length === 1) {{
+                    send('center_node', {{ id: selectedNodes[0] }});
                 }}
             }}
-        }} catch (error) {{
-            console.error("Error in keyboard handler:", error);
         }}
     }});
 
-    // Search highlight
+    // Add button event listeners for center and delete
+    document.querySelectorAll('.center-button').forEach(button => {{
+        button.addEventListener('click', (e) => {{
+            const id = e.target.getAttribute('data-id');
+            if (id) {{
+                send('center_node', {{ id: parseInt(id) }});
+            }}
+        }});
+    }});
+
+    // Search highlight - keep simple
     if (highlight) {{
-        try {{
-            nodes.get().forEach(n => {{
-                if (n.label.toLowerCase().includes(highlight.toLowerCase()) || 
-                    (n.title && n.title.toLowerCase().includes(highlight.toLowerCase()))) {{
-                    nodes.update({{ id: n.id, color: {{ background: 'yellow', border: 'orange' }} }});
-                }}
-            }});
-        }} catch (error) {{
-            console.error("Error in search highlighting:", error);
-        }}
+        nodes.forEach((n) => {{
+            if (n.label.toLowerCase().includes(highlight.toLowerCase())) {{
+                n.color = {{ background: 'yellow', border: 'orange' }};
+            }}
+        }});
     }}
 """)
 
     html = net.generate_html() + f"<script>{js}</script>"
-    components.html(html, height=int(canvas_height.replace("px", "")))
+    components.html(html, height=int(canvas_height.replace("px", "")), scrolling=True)
 
-    # Check query parameters for messages from JavaScript
-    if 'msg' in st.query_params:
+    # Process form submissions instead of query parameters
+    action = st.query_params.get('action', None)
+    payload_str = st.query_params.get('payload', None)
+    
+    if action and payload_str:
         try:
-            msg_str = st.query_params.get('msg')
-            if msg_str:
-                msg_data = json.loads(msg_str)
-                handle_message(msg_data)
-                # Clear message from URL to prevent reprocessing
-                st.query_params.pop('msg')
+            payload = json.loads(payload_str)
+            # Create a message data structure
+            msg_data = {'type': action, 'payload': payload}
+            handle_message(msg_data)
+            
+            # Save data after handling the message
+            save_data(get_store())
+            
+            # Clear parameters after processing
+            st.query_params.pop('action', None)
+            st.query_params.pop('payload', None)
         except Exception as e:
             handle_exception(e)
 

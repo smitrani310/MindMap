@@ -32,7 +32,7 @@ ENV/
 .DS_Store
 
 # Old Files
-mindmap_app_v5.2_claude.py
+mindmap_data.json
 old_versions/
 
 # Jupyter Notebook
