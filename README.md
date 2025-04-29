@@ -13,6 +13,7 @@ A powerful, interactive mind mapping application built with Streamlit and PyVis.
   - Adjustable connection lengths and strengths
   - Size variations based on urgency levels
 - **Data Persistence**: All changes are automatically saved to a JSON file
+- **Error Handling**: Comprehensive error handling and logging system
 
 ### Advanced Features
 - **Tag System**: Categorize nodes with color-coded tags
@@ -87,11 +88,13 @@ enhanced-mindmap/
 ├── mindmap_data.json       # Data persistence file
 ├── requirements.txt        # Project dependencies
 ├── src/
+│   ├── config.py          # Configuration settings
 │   ├── state.py           # State management
 │   ├── history.py         # Undo/redo functionality
 │   ├── utils.py           # Utility functions
 │   ├── themes.py          # Theme definitions
-│   └── handlers.py        # Event handlers
+│   ├── handlers.py        # Event handlers
+│   └── network_handlers.js # JavaScript interaction handlers
 └── README.md              # This file
 ```
 
@@ -103,6 +106,7 @@ enhanced-mindmap/
 - json
 - datetime
 - os
+- logging
 
 ## Contributing
 
@@ -114,6 +118,11 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Version History
 
+- v5.4: Enhanced Mind Map with Improved Structure
+  - Added centralized configuration
+  - Separated JavaScript handlers
+  - Improved error handling
+  - Better code organization
 - v5.3: Enhanced Mind Map with Stability Improvements
   - Added data persistence with JSON file storage
   - Added expanded canvas option

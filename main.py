@@ -1,10 +1,9 @@
-"""streamlit_mindmap_app.py – v5.3 Enhanced Mind Map with Stability Improvements
+"""streamlit_mindmap_app.py – v5.4 Enhanced Mind Map with Improved Structure
 Added features:
-- Data persistence with JSON file storage
-- Expanded canvas option
-- Improved node search in sidebar
-- Fixed interaction on Windows/Chrome
-- Cleaned up code structure
+- Centralized configuration
+- Separated JavaScript handlers
+- Improved error handling
+- Better code organization
 
 Original features:
 - Tags/categories for nodes with color coding
@@ -21,6 +20,7 @@ import textwrap
 import datetime
 import traceback
 import os
+import logging
 from typing import List, Dict, Optional, Tuple, Set
 from copy import deepcopy
 
@@ -28,7 +28,12 @@ import streamlit as st
 from pyvis.network import Network
 import streamlit.components.v1 as components
 
-# Import refactored modules first
+# Import configuration and modules
+from src.config import (
+    DATA_FILE, DEFAULT_SETTINGS, NETWORK_CONFIG,
+    CANVAS_DIMENSIONS, PRIMARY_NODE_BORDER, RGBA_ALPHA,
+    ERROR_MESSAGES
+)
 from src.state import get_store, get_ideas, get_central, get_next_id, increment_next_id, get_current_theme
 from src.state import set_ideas as original_set_ideas
 from src.state import add_idea as original_add_idea
@@ -36,29 +41,49 @@ from src.state import set_central as original_set_central
 from src.state import set_current_theme as original_set_current_theme
 from src.history import save_state_to_history, can_undo, can_redo, perform_undo, perform_redo
 from src.utils import hex_to_rgb, get_theme, recalc_size, get_edge_color, get_urgency_color, get_tag_color
-from src.themes import THEMES, TAGS, URGENCY_SIZE, PRIMARY_NODE_BORDER, RGBA_ALPHA
+from src.themes import THEMES, TAGS, URGENCY_SIZE
 from src.handlers import handle_message, handle_exception, is_circular
 
-# Data persistence file path
-DATA_FILE = "mindmap_data.json"
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 def load_data():
     """Load data from JSON file if it exists"""
-    if os.path.exists(DATA_FILE):
-        try:
+    try:
+        if os.path.exists(DATA_FILE):
             with open(DATA_FILE, 'r') as f:
                 return json.load(f)
-        except Exception as e:
-            st.error(f"Error loading data: {str(e)}")
-    return None
+        logger.info("Data file not found, using default settings")
+        return None
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in data file: {str(e)}")
+        st.error(ERROR_MESSAGES['invalid_json'])
+        return None
+    except PermissionError as e:
+        logger.error(f"Permission error accessing data file: {str(e)}")
+        st.error(ERROR_MESSAGES['permission_error'])
+        return None
+    except Exception as e:
+        logger.error(f"Error loading data: {str(e)}")
+        st.error(ERROR_MESSAGES['load_data'].format(error=str(e)))
+        return None
 
 def save_data(data):
     """Save data to JSON file"""
     try:
         with open(DATA_FILE, 'w') as f:
             json.dump(data, f)
+        logger.info("Data saved successfully")
+    except PermissionError as e:
+        logger.error(f"Permission error saving data file: {str(e)}")
+        st.error(ERROR_MESSAGES['permission_error'])
     except Exception as e:
-        st.error(f"Error saving data: {str(e)}")
+        logger.error(f"Error saving data: {str(e)}")
+        st.error(ERROR_MESSAGES['save_data'].format(error=str(e)))
 
 # Override state management functions to add data persistence
 def set_ideas(ideas: List[Dict]):
@@ -93,22 +118,12 @@ if 'store' not in st.session_state:
             'history': [],
             'history_index': -1,
             'current_theme': 'default',
-            'settings': {
-                'edge_length': 100,
-                'spring_strength': 0.5,
-                'size_multiplier': 1.0,
-                'canvas_expanded': False
-            }
+            'settings': DEFAULT_SETTINGS.copy()
         }
     
     # Initialize settings in session state for easy access
     if 'settings' not in get_store():
-        get_store()['settings'] = {
-            'edge_length': 100,
-            'spring_strength': 0.5,
-            'size_multiplier': 1.0,
-            'canvas_expanded': False
-        }
+        get_store()['settings'] = DEFAULT_SETTINGS.copy()
 
 # ---------------- Main App ----------------
 try:
@@ -141,9 +156,9 @@ try:
         
         # Get settings with defaults
         settings = get_store().get('settings', {})
-        default_edge_length = settings.get('edge_length', 100)
-        default_spring_strength = settings.get('spring_strength', 0.5)
-        default_size_multiplier = settings.get('size_multiplier', 1.0)
+        default_edge_length = settings.get('edge_length', DEFAULT_SETTINGS['edge_length'])
+        default_spring_strength = settings.get('spring_strength', DEFAULT_SETTINGS['spring_strength'])
+        default_size_multiplier = settings.get('size_multiplier', DEFAULT_SETTINGS['size_multiplier'])
         
         # Add connection length slider
         edge_length = st.slider(
@@ -501,22 +516,23 @@ try:
         st.rerun()
 
     # Set canvas height based on expansion state
-    canvas_height = "1000px" if canvas_expanded else "650px"
+    canvas_height = CANVAS_DIMENSIONS['expanded' if canvas_expanded else 'normal']
 
     # Build PyVis Network
     theme = get_theme()
     net = Network(height=canvas_height, width="100%", directed=True, bgcolor=theme['background'])
 
-    # Configure physics for better node placement and shorter connections
+    # Configure physics using centralized settings
     net.barnes_hut(
-        gravity=-2000,     # Less negative value reduces repulsion
-        central_gravity=0.3,  # Higher value keeps nodes more centered
-        spring_length=50,   # Shorter spring length for connections
-        spring_strength=spring_strength,  # Stronger springs pulls connected nodes closer
-        damping=0.09,       # Slightly increased damping
-        overlap=0          # Prevent node overlap
+        gravity=NETWORK_CONFIG['gravity'],
+        central_gravity=NETWORK_CONFIG['central_gravity'],
+        spring_length=NETWORK_CONFIG['spring_length'],
+        spring_strength=spring_strength,
+        damping=NETWORK_CONFIG['damping'],
+        overlap=NETWORK_CONFIG['overlap']
     )
 
+    # Add nodes and edges to the network
     id_set = {n['id'] for n in ideas}
     for n in ideas:
         recalc_size(n)
@@ -561,6 +577,7 @@ try:
 
         net.add_node(n['id'], **kwargs)
 
+    # Add edges between nodes
     for n in ideas:
         pid = n.get('parent')
         if pid in id_set:
@@ -568,114 +585,12 @@ try:
             edge_color = get_edge_color(edge_type)
             net.add_edge(pid, n['id'], arrows='to', color=edge_color, title=edge_type, length=edge_length)
 
-    # JavaScript for interactions - simplified approach
-    js = textwrap.dedent(f"""
-    const nodes = network.body.data.nodes;
-    const edges = network.body.data.edges;
-    const highlight = '{search_q.lower()}';
+    # Load and inject JavaScript handlers
+    with open('src/network_handlers.js', 'r') as f:
+        js_handlers = f.read()
 
-    // Create a hidden form for message passing
-    const formDiv = document.createElement('div');
-    formDiv.style.display = 'none';
-    formDiv.innerHTML = `
-        <form id="message-form" action="" method="get">
-            <input type="hidden" id="message-type" name="action" value="">
-            <input type="hidden" id="message-payload" name="payload" value="">
-            <button type="submit" id="message-submit">Submit</button>
-        </form>
-    `;
-    document.body.appendChild(formDiv);
-
-    // Message passing via form submission
-    function send(action, payload) {{
-        try {{
-            document.getElementById('message-type').value = action;
-            document.getElementById('message-payload').value = JSON.stringify(payload);
-            document.getElementById('message-form').submit();
-        }} catch (error) {{
-            console.error("Failed to send message:", error);
-        }}
-    }}
-
-    // Initialize physics
-    network.once('afterDrawing', () => {{
-        network.stabilize(100);
-    }});
-
-    // Handle node dragging (keep this simple)
-    network.on('dragEnd', (params) => {{
-        if (params.nodes.length === 1) {{
-            const pos = {{}};
-            const id = params.nodes[0];
-            const position = network.getPositions([id])[id];
-            pos[id] = position;
-            send('pos', pos);
-        }}
-    }});
-
-    // Click for node details - simplest approach
-    network.on('click', (params) => {{
-        if (params.nodes.length === 1) {{
-            const id = params.nodes[0];
-            send('select_node', {{ id }});
-        }}
-    }});
-
-    // Double-click for edit - simplest approach
-    network.on('doubleClick', (params) => {{
-        if (params.nodes.length === 1) {{
-            const id = params.nodes[0];
-            send('edit_modal', {{ id }});
-        }}
-    }});
-
-    // Context menu for delete - simplest approach that works on Windows/Chrome
-    network.on('contextmenu', (params) => {{
-        params.event.preventDefault();
-        if (params.nodes.length === 1) {{
-            const id = params.nodes[0];
-            if (confirm('Delete this bubble?')) {{
-                send('delete', {{ id: id }});
-            }}
-        }}
-        return false;
-    }});
-
-    // Keyboard shortcuts with better handling
-    document.addEventListener('keydown', (e) => {{
-        // Only process if not in a text field
-        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {{
-            // Ctrl+Space to center selected node
-            if (e.ctrlKey && e.code === 'Space') {{
-                const selectedNodes = network.getSelectedNodes();
-                if (selectedNodes.length === 1) {{
-                    send('center_node', {{ id: selectedNodes[0] }});
-                }}
-            }}
-        }}
-    }});
-
-    // Add button event listeners for center and delete
-    document.querySelectorAll('.center-button').forEach(button => {{
-        button.addEventListener('click', (e) => {{
-            const id = e.target.getAttribute('data-id');
-            if (id) {{
-                send('center_node', {{ id: parseInt(id) }});
-            }}
-        }});
-    }});
-
-    // Search highlight - keep simple
-    if (highlight) {{
-        nodes.forEach((n) => {{
-            if (n.label.toLowerCase().includes(highlight.toLowerCase())) {{
-                n.color = {{ background: 'yellow', border: 'orange' }};
-            }}
-        }});
-    }}
-""")
-
-    html = net.generate_html() + f"<script>{js}</script>"
+    # Generate HTML with injected JavaScript
+    html = net.generate_html() + f"<script>{js_handlers}</script>"
     components.html(html, height=int(canvas_height.replace("px", "")), scrolling=True)
 
     # Process form submissions instead of query parameters
@@ -728,4 +643,6 @@ try:
                 st.markdown(f"- {child['label']} ({child.get('edge_type', 'default')} connection)")
 
 except Exception as e:
+    logger.error(f"Unhandled exception: {str(e)}")
+    logger.error(traceback.format_exc())
     handle_exception(e)
