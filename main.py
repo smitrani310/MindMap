@@ -162,7 +162,26 @@ try:
         # Get custom colors or use defaults
         custom_colors = settings.get('custom_colors', DEFAULT_SETTINGS['custom_colors'])
         
+        # Add color mode toggle
+        color_mode = settings.get('color_mode', DEFAULT_SETTINGS['color_mode'])
+        new_color_mode = st.radio(
+            "Node Color Mode",
+            options=["Urgency", "Tag"],
+            index=0 if color_mode == 'urgency' else 1,
+            horizontal=True,
+            help="Choose whether to color nodes based on urgency level or tag"
+        )
+        # Convert display name to config value
+        new_color_mode = new_color_mode.lower()
+        
+        # Add explanation of current mode
+        if new_color_mode == 'urgency':
+            st.info("Nodes are colored by urgency level (high, medium, low).")
+        else:
+            st.info("Nodes are colored by their assigned tag. Nodes without tags will use urgency colors.")
+        
         # Color tabs for urgency and tags
+        active_tab = 0 if new_color_mode == 'urgency' else 1
         color_tab1, color_tab2 = st.tabs(["Urgency Colors", "Tag Colors"])
         
         # Urgency color pickers
@@ -242,7 +261,8 @@ try:
             edge_length != default_edge_length or 
             spring_strength != default_spring_strength or 
             size_multiplier != default_size_multiplier or
-            custom_colors != settings.get('custom_colors', {})
+            custom_colors != settings.get('custom_colors', {}) or
+            new_color_mode != color_mode
         )
         
         if settings_changed:
@@ -251,6 +271,7 @@ try:
                 'spring_strength': spring_strength,
                 'size_multiplier': size_multiplier,
                 'canvas_expanded': settings.get('canvas_expanded', False),
+                'color_mode': new_color_mode,
                 'custom_colors': custom_colors
             }
             save_data(get_store())
@@ -603,8 +624,11 @@ try:
     for n in ideas:
         recalc_size(n)
 
-        # Set color based on tag first, then urgency
-        if n.get('tag') and n['tag'] in TAGS:
+        # Get the color mode from settings
+        color_mode = get_store().get('settings', {}).get('color_mode', 'urgency')
+        
+        # Set color based on tag or urgency depending on color mode
+        if color_mode == 'tag' and n.get('tag') and n['tag'] in TAGS:
             color_hex = get_tag_color(n['tag'])
         else:
             color_hex = get_urgency_color(n['urgency'])
@@ -708,6 +732,23 @@ try:
         display_node = next((n for n in ideas if n['id'] == selected_node_id), None)
     elif get_central() is not None:
         display_node = next((n for n in ideas if n['id'] == get_central()), None)
+
+    # Display color mode legend
+    color_mode = get_store().get('settings', {}).get('color_mode', 'urgency')
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        if color_mode == 'urgency':
+            st.write("🎨 **Color Mode:** Urgency-based")
+        else:
+            st.write("🎨 **Color Mode:** Tag-based")
+    with col2:
+        # Quick toggle button
+        if st.button("Toggle Color Mode"):
+            settings = get_store().get('settings', {})
+            new_mode = 'tag' if color_mode == 'urgency' else 'urgency'
+            settings['color_mode'] = new_mode
+            save_data(get_store())
+            st.rerun()
 
     if display_node:
         st.subheader(f"📌 Selected: {display_node['label']}")

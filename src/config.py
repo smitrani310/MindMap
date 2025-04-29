@@ -9,6 +9,7 @@ DEFAULT_SETTINGS = {
     'spring_strength': 0.5,
     'size_multiplier': 1.0,
     'canvas_expanded': False,
+    'color_mode': 'urgency',  # 'urgency' or 'tag'
     'custom_colors': {
         'urgency': {
             'high': '#FF5252',
