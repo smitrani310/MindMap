@@ -8,7 +8,24 @@ DEFAULT_SETTINGS = {
     'edge_length': 100,
     'spring_strength': 0.5,
     'size_multiplier': 1.0,
-    'canvas_expanded': False
+    'canvas_expanded': False,
+    'custom_colors': {
+        'urgency': {
+            'high': '#FF5252',
+            'medium': '#FFC107',
+            'low': '#4CAF50'
+        },
+        'tags': {
+            'work': '#2196F3',
+            'personal': '#9C27B0',
+            'idea': '#00BCD4',
+            'task': '#FF9800',
+            'note': '#607D8B',
+            'important': '#F44336',
+            'question': '#8BC34A',
+            'research': '#3F51B5'
+        }
+    }
 }
 
 # Network configuration

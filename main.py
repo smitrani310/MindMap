@@ -156,14 +156,102 @@ try:
             help="Enhance the size difference between urgency levels (higher = more pronounced difference)"
         )
         
-        # Save settings if changed
-        if (edge_length != default_edge_length or 
+        # Color customization section
+        st.markdown("### Color Customization")
+        
+        # Get custom colors or use defaults
+        custom_colors = settings.get('custom_colors', DEFAULT_SETTINGS['custom_colors'])
+        
+        # Color tabs for urgency and tags
+        color_tab1, color_tab2 = st.tabs(["Urgency Colors", "Tag Colors"])
+        
+        # Urgency color pickers
+        with color_tab1:
+            urgency_colors = custom_colors.get('urgency', DEFAULT_SETTINGS['custom_colors']['urgency'])
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                high_color = st.color_picker(
+                    "High Urgency", 
+                    urgency_colors.get('high', DEFAULT_SETTINGS['custom_colors']['urgency']['high']),
+                    help="Color for high urgency nodes"
+                )
+            with col2:
+                medium_color = st.color_picker(
+                    "Medium Urgency", 
+                    urgency_colors.get('medium', DEFAULT_SETTINGS['custom_colors']['urgency']['medium']),
+                    help="Color for medium urgency nodes"
+                )
+            with col3:
+                low_color = st.color_picker(
+                    "Low Urgency", 
+                    urgency_colors.get('low', DEFAULT_SETTINGS['custom_colors']['urgency']['low']),
+                    help="Color for low urgency nodes"
+                )
+            
+            # Update urgency colors if changed
+            if (high_color != urgency_colors.get('high') or 
+                medium_color != urgency_colors.get('medium') or 
+                low_color != urgency_colors.get('low')):
+                custom_colors['urgency'] = {
+                    'high': high_color,
+                    'medium': medium_color,
+                    'low': low_color
+                }
+        
+        # Tag color pickers
+        with color_tab2:
+            tag_colors = custom_colors.get('tags', DEFAULT_SETTINGS['custom_colors']['tags'])
+            
+            # Create 2 columns for tag colors
+            tag_col1, tag_col2 = st.columns(2)
+            
+            # List all tags
+            all_tags = list(TAGS.keys())
+            half_length = len(all_tags) // 2 + len(all_tags) % 2
+            
+            # First column of tags
+            with tag_col1:
+                for tag in all_tags[:half_length]:
+                    tag_color = st.color_picker(
+                        f"{tag.capitalize()}", 
+                        tag_colors.get(tag, TAGS[tag]['color']),
+                        help=f"Color for {tag} tag"
+                    )
+                    # Update if changed
+                    if tag_color != tag_colors.get(tag):
+                        tag_colors[tag] = tag_color
+            
+            # Second column of tags
+            with tag_col2:
+                for tag in all_tags[half_length:]:
+                    tag_color = st.color_picker(
+                        f"{tag.capitalize()}", 
+                        tag_colors.get(tag, TAGS[tag]['color']),
+                        help=f"Color for {tag} tag"
+                    )
+                    # Update if changed
+                    if tag_color != tag_colors.get(tag):
+                        tag_colors[tag] = tag_color
+            
+            # Update tag colors
+            custom_colors['tags'] = tag_colors
+        
+        # Save all settings if changed
+        settings_changed = (
+            edge_length != default_edge_length or 
             spring_strength != default_spring_strength or 
-            size_multiplier != default_size_multiplier):
+            size_multiplier != default_size_multiplier or
+            custom_colors != settings.get('custom_colors', {})
+        )
+        
+        if settings_changed:
             get_store()['settings'] = {
                 'edge_length': edge_length,
                 'spring_strength': spring_strength,
-                'size_multiplier': size_multiplier
+                'size_multiplier': size_multiplier,
+                'canvas_expanded': settings.get('canvas_expanded', False),
+                'custom_colors': custom_colors
             }
             save_data(get_store())
         

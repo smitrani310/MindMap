@@ -1,41 +1,100 @@
-# Theme and tag definitions for MindMap
+"""Theme definitions for the mind map application."""
 
-RGBA_ALPHA = 0.5
+# UI Constants
+PRIMARY_NODE_BORDER = 2
+RGBA_ALPHA = 0.7
 
+# Node size based on urgency
+URGENCY_SIZE = {
+    'high': 25,
+    'medium': 20,
+    'low': 15
+}
+
+# Tag definitions with defaults
+TAGS = {
+    'work': {'color': '#2196F3', 'description': 'Work-related items'},
+    'personal': {'color': '#9C27B0', 'description': 'Personal items'},
+    'idea': {'color': '#00BCD4', 'description': 'Creative ideas'},
+    'task': {'color': '#FF9800', 'description': 'Tasks to be completed'},
+    'note': {'color': '#607D8B', 'description': 'General notes'},
+    'important': {'color': '#F44336', 'description': 'Important items'},
+    'question': {'color': '#8BC34A', 'description': 'Questions to explore'},
+    'research': {'color': '#3F51B5', 'description': 'Research topics'}
+}
+
+# Theme definitions
 THEMES = {
     'default': {
         'background': '#FFFFFF',
-        'urgency_colors': {'high': '#e63946', 'medium': '#f4a261', 'low': '#2a9d8f'},
-        'edge_colors': {'default': '#848484', 'supports': '#2a9d8f', 'contradicts': '#e63946', 'relates': '#f4a261'}
+        'text': '#000000',
+        'node': '#EEEEEE',
+        'urgency_colors': {
+            'high': '#FF5252',
+            'medium': '#FFC107',
+            'low': '#4CAF50'
+        },
+        'edge_colors': {
+            'default': '#999999',
+            'strong': '#444444',
+            'weak': '#CCCCCC',
+            'dependency': '#FF0000',
+            'relation': '#0000FF',
+            'influence': '#00FF00'
+        }
     },
     'dark': {
         'background': '#2E3440',
-        'urgency_colors': {'high': '#BF616A', 'medium': '#EBCB8B', 'low': '#A3BE8C'},
-        'edge_colors': {'default': '#D8DEE9', 'supports': '#A3BE8C', 'contradicts': '#BF616A', 'relates': '#EBCB8B'}
+        'text': '#D8DEE9',
+        'node': '#3B4252',
+        'urgency_colors': {
+            'high': '#BF616A',
+            'medium': '#EBCB8B',
+            'low': '#A3BE8C'
+        },
+        'edge_colors': {
+            'default': '#81A1C1',
+            'strong': '#D8DEE9',
+            'weak': '#4C566A',
+            'dependency': '#BF616A',
+            'relation': '#81A1C1',
+            'influence': '#A3BE8C'
+        }
     },
-    'pastel': {
-        'background': '#F8F9FA',
-        'urgency_colors': {'high': '#FF9AA2', 'medium': '#FFB347', 'low': '#98DDCA'},
-        'edge_colors': {'default': '#9BA4B4', 'supports': '#98DDCA', 'contradicts': '#FF9AA2', 'relates': '#FFB347'}
+    'solarized': {
+        'background': '#FDF6E3',
+        'text': '#657B83',
+        'node': '#EEE8D5',
+        'urgency_colors': {
+            'high': '#DC322F',
+            'medium': '#CB4B16',
+            'low': '#859900'
+        },
+        'edge_colors': {
+            'default': '#93A1A1',
+            'strong': '#657B83',
+            'weak': '#EEE8D5',
+            'dependency': '#DC322F',
+            'relation': '#268BD2',
+            'influence': '#859900'
+        }
     },
-    'vibrant': {
-        'background': '#FFFFFF',
-        'urgency_colors': {'high': '#FF1E56', 'medium': '#FFAC41', 'low': '#16C79A'},
-        'edge_colors': {'default': '#666666', 'supports': '#16C79A', 'contradicts': '#FF1E56', 'relates': '#FFAC41'}
+    'midnight': {
+        'background': '#121212',
+        'text': '#FFFFFF',
+        'node': '#1E1E1E',
+        'urgency_colors': {
+            'high': '#CF6679',
+            'medium': '#FFAB40',
+            'low': '#03DAC6'
+        },
+        'edge_colors': {
+            'default': '#BB86FC',
+            'strong': '#FFFFFF',
+            'weak': '#3B3B3B',
+            'dependency': '#CF6679',
+            'relation': '#BB86FC',
+            'influence': '#03DAC6'
+        }
     }
-}
-
-TAGS = {
-    'idea': '#4361EE',
-    'task': '#3A0CA3',
-    'question': '#7209B7',
-    'project': '#F72585',
-    'note': '#4CC9F0',
-    'research': '#560BAD',
-    'personal': '#F3722C',
-    'work': '#F8961E'
-}
-
-# Make urgency size differences more pronounced
-URGENCY_SIZE = {'high': 400, 'medium': 200, 'low': 100}
-PRIMARY_NODE_BORDER = 4 
+} 
