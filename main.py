@@ -89,6 +89,24 @@ try:
         .stSidebar {
             background-color: #3B4252;
         }
+        /* Remove canvas frame */
+        iframe {
+            border: none !important;
+            box-shadow: none !important;
+            background-color: transparent !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+    else:
+        # For light theme, only remove the frame but keep the theme
+        st.markdown("""
+        <style>
+        /* Remove canvas frame */
+        iframe {
+            border: none !important;
+            box-shadow: none !important;
+            background-color: transparent !important;
+        }
         </style>
         """, unsafe_allow_html=True)
 
@@ -468,7 +486,19 @@ try:
 
     # Build PyVis Network
     theme = get_theme()
-    net = Network(height=canvas_height, width="100%", directed=True, bgcolor=theme['background'])
+    canvas_height = CANVAS_DIMENSIONS['expanded' if st.session_state.get('canvas_expanded', False) else 'normal']
+    
+    # Create network with transparent background for seamless integration
+    net = Network(
+        height=canvas_height, 
+        width="100%", 
+        directed=True, 
+        bgcolor=theme['background'],
+        font_color=theme.get('text_color', '#333333'),
+        select_menu=False,  # Remove the default right-click menu
+        filter_menu=False,  # Remove the filter menu
+        cdn_resources='local'  # Use local resources for better loading
+    )
 
     # Configure physics using centralized settings
     net.barnes_hut(
@@ -538,8 +568,29 @@ try:
         js_handlers = f.read()
 
     # Generate HTML with injected JavaScript
-    html = net.generate_html() + f"<script>{js_handlers}</script>"
-    components.html(html, height=int(canvas_height.replace("px", "")), scrolling=True)
+    html = net.generate_html() 
+    
+    # Modify the HTML to remove borders and add custom styling
+    html = html.replace('<body style="margin:0">', 
+                        '<body style="margin:0; padding:0; overflow:hidden;">')
+    
+    # Add custom CSS to make the canvas seamless
+    html = html.replace('</head>', '''
+    <style>
+    #mynetwork {
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+    }
+    </style>
+    </head>
+    ''')
+    
+    # Add the JavaScript handlers
+    html = html + f"<script>{js_handlers}</script>"
+    
+    # Render the HTML with the appropriate height
+    components.html(html, height=int(canvas_height.replace("px", "")), scrolling=False)
 
     # Process form submissions instead of query parameters
     action = st.query_params.get('action', None)
