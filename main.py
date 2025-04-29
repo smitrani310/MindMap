@@ -34,11 +34,10 @@ from src.config import (
     CANVAS_DIMENSIONS, PRIMARY_NODE_BORDER, RGBA_ALPHA,
     ERROR_MESSAGES
 )
-from src.state import get_store, get_ideas, get_central, get_next_id, increment_next_id, get_current_theme
-from src.state import set_ideas as original_set_ideas
-from src.state import add_idea as original_add_idea
-from src.state import set_central as original_set_central
-from src.state import set_current_theme as original_set_current_theme
+from src.state import (
+    get_store, get_ideas, get_central, get_next_id, increment_next_id, get_current_theme,
+    set_ideas, add_idea, set_central, set_current_theme, save_data, load_data
+)
 from src.history import save_state_to_history, can_undo, can_redo, perform_undo, perform_redo
 from src.utils import hex_to_rgb, get_theme, recalc_size, get_edge_color, get_urgency_color, get_tag_color
 from src.themes import THEMES, TAGS, URGENCY_SIZE
@@ -50,57 +49,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-def load_data():
-    """Load data from JSON file if it exists"""
-    try:
-        if os.path.exists(DATA_FILE):
-            with open(DATA_FILE, 'r') as f:
-                return json.load(f)
-        logger.info("Data file not found, using default settings")
-        return None
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in data file: {str(e)}")
-        st.error(ERROR_MESSAGES['invalid_json'])
-        return None
-    except PermissionError as e:
-        logger.error(f"Permission error accessing data file: {str(e)}")
-        st.error(ERROR_MESSAGES['permission_error'])
-        return None
-    except Exception as e:
-        logger.error(f"Error loading data: {str(e)}")
-        st.error(ERROR_MESSAGES['load_data'].format(error=str(e)))
-        return None
-
-def save_data(data):
-    """Save data to JSON file"""
-    try:
-        with open(DATA_FILE, 'w') as f:
-            json.dump(data, f)
-        logger.info("Data saved successfully")
-    except PermissionError as e:
-        logger.error(f"Permission error saving data file: {str(e)}")
-        st.error(ERROR_MESSAGES['permission_error'])
-    except Exception as e:
-        logger.error(f"Error saving data: {str(e)}")
-        st.error(ERROR_MESSAGES['save_data'].format(error=str(e)))
-
-# Override state management functions to add data persistence
-def set_ideas(ideas: List[Dict]):
-    original_set_ideas(ideas)
-    save_data(get_store())
-
-def add_idea(node: Dict):
-    original_add_idea(node)
-    save_data(get_store())
-
-def set_central(mid: Optional[int]):
-    original_set_central(mid)
-    save_data(get_store())
-
-def set_current_theme(theme_name: str):
-    original_set_current_theme(theme_name)
-    save_data(get_store())
 
 # Initialize session state with persisted data
 if 'store' not in st.session_state:
@@ -312,12 +260,12 @@ try:
     if undo_col.button("↩️ Undo", disabled=not can_undo()):
         if perform_undo():
             save_data(get_store())
-            st.rerun()
+            st.rerun()  # Force a complete rerun to update the network
 
     if redo_col.button("↪️ Redo", disabled=not can_redo()):
         if perform_redo():
             save_data(get_store())
-            st.rerun()
+            st.rerun()  # Force a complete rerun to update the network
 
     # Keyboard Shortcuts Info
     with st.sidebar.expander("⌨️ Keyboard Shortcuts"):

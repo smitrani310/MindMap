@@ -1,47 +1,98 @@
-# Undo/redo and history management for MindMap
+"""History management for undo/redo functionality."""
+
+from typing import List, Dict, Any
 from copy import deepcopy
-from src.state import get_store
+import streamlit as st
 
-def save_state_to_history():
-    store = get_store()
-    if len(store['ideas']) > 0 or store['history_index'] >= 0:
-        if store['history_index'] < len(store['history']) - 1:
-            store['history'] = store['history'][:store['history_index'] + 1]
-        current_state = {
-            'ideas': deepcopy(store['ideas']),
-            'central': store['central']
-        }
-        store['history'].append(current_state)
-        store['history_index'] = len(store['history']) - 1
-        max_history = 30
-        if len(store['history']) > max_history:
-            store['history'] = store['history'][-max_history:]
-            store['history_index'] = len(store['history']) - 1
+def get_history() -> List[Dict[str, Any]]:
+    """Get the history stack from session state."""
+    return st.session_state.get('store', {}).get('history', [])
 
-def can_undo():
-    store = get_store()
-    return store['history_index'] > 0
+def get_history_index() -> int:
+    """Get the current history index from session state."""
+    return st.session_state.get('store', {}).get('history_index', -1)
 
-def can_redo():
-    store = get_store()
-    return 0 <= store['history_index'] < len(store['history']) - 1
+def set_history(history: List[Dict[str, Any]]) -> None:
+    """Set the history stack in session state."""
+    st.session_state['store']['history'] = history
 
-def perform_undo():
-    store = get_store()
-    if can_undo():
-        store['history_index'] -= 1
-        previous_state = store['history'][store['history_index']]
-        store['ideas'] = deepcopy(previous_state['ideas'])
-        store['central'] = previous_state['central']
-        return True
-    return False
+def set_history_index(index: int) -> None:
+    """Set the current history index in session state."""
+    st.session_state['store']['history_index'] = index
 
-def perform_redo():
-    store = get_store()
-    if can_redo():
-        store['history_index'] += 1
-        next_state = store['history'][store['history_index']]
-        store['ideas'] = deepcopy(next_state['ideas'])
-        store['central'] = next_state['central']
-        return True
-    return False 
+def save_state_to_history() -> None:
+    """Save the current state to history."""
+    store = st.session_state.get('store', {})
+    history = store.get('history', [])
+    history_index = store.get('history_index', -1)
+    
+    # Remove any states after the current index
+    if history_index < len(history) - 1:
+        history = history[:history_index + 1]
+    
+    # Save current state with all required fields
+    current_state = {
+        'ideas': deepcopy(store.get('ideas', [])),
+        'central': store.get('central'),
+        'next_id': store.get('next_id', 0),
+        'settings': deepcopy(store.get('settings', {}))
+    }
+    
+    history.append(current_state)
+    set_history(history)
+    set_history_index(len(history) - 1)
+
+def can_undo() -> bool:
+    """Check if undo is possible."""
+    return get_history_index() > 0
+
+def can_redo() -> bool:
+    """Check if redo is possible."""
+    history = get_history()
+    return get_history_index() < len(history) - 1
+
+def perform_undo() -> bool:
+    """Perform undo operation."""
+    if not can_undo():
+        return False
+    
+    history = get_history()
+    history_index = get_history_index()
+    
+    # Get the previous state
+    previous_state = history[history_index - 1]
+    
+    # Update current state with proper default values
+    store = st.session_state['store']
+    store['ideas'] = deepcopy(previous_state.get('ideas', []))
+    store['central'] = previous_state.get('central')
+    store['next_id'] = previous_state.get('next_id', 0)  # Default to 0 if not present
+    store['settings'] = deepcopy(previous_state.get('settings', {}))
+    
+    # Update history index
+    set_history_index(history_index - 1)
+    
+    return True
+
+def perform_redo() -> bool:
+    """Perform redo operation."""
+    if not can_redo():
+        return False
+    
+    history = get_history()
+    history_index = get_history_index()
+    
+    # Get the next state
+    next_state = history[history_index + 1]
+    
+    # Update current state with proper default values
+    store = st.session_state['store']
+    store['ideas'] = deepcopy(next_state.get('ideas', []))
+    store['central'] = next_state.get('central')
+    store['next_id'] = next_state.get('next_id', 0)  # Default to 0 if not present
+    store['settings'] = deepcopy(next_state.get('settings', {}))
+    
+    # Update history index
+    set_history_index(history_index + 1)
+    
+    return True 
