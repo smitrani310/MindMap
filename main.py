@@ -5,6 +5,7 @@ Added features:
 - Explicit circular-parent checks to prevent loops
 - Centralized error handling
 - Strict integer ID management & traceability
+- Data persistence with JSON file storage
 
 Original features:
 - Tags/categories for nodes with color coding
@@ -20,12 +21,49 @@ import json
 import textwrap
 import datetime
 import traceback
+import os
 from typing import List, Dict, Optional, Tuple, Set
 from copy import deepcopy
 
 import streamlit as st
 from pyvis.network import Network
 import streamlit.components.v1 as components
+
+# Data persistence file path
+DATA_FILE = "mindmap_data.json"
+
+def load_data():
+    """Load data from JSON file if it exists"""
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            st.error(f"Error loading data: {str(e)}")
+    return None
+
+def save_data(data):
+    """Save data to JSON file"""
+    try:
+        with open(DATA_FILE, 'w') as f:
+            json.dump(data, f)
+    except Exception as e:
+        st.error(f"Error saving data: {str(e)}")
+
+# Initialize session state with persisted data
+if 'store' not in st.session_state:
+    persisted_data = load_data()
+    if persisted_data:
+        st.session_state['store'] = persisted_data
+    else:
+        st.session_state['store'] = {
+            'ideas': [],
+            'central': None,
+            'next_id': 0,
+            'history': [],
+            'history_index': -1,
+            'current_theme': 'default'
+        }
 
 # Import refactored modules
 from src.state import get_store, get_ideas, set_ideas, add_idea, get_central, set_central, get_next_id, increment_next_id, get_current_theme, set_current_theme
@@ -56,12 +94,14 @@ def set_ideas(ideas: List[Dict]):
     # Save current state to history before changing
     save_state_to_history()
     store['ideas'] = ideas
+    save_data(store)  # Save to file after change
 
 def add_idea(node: Dict):
     store = get_store()
     # Save current state to history before changing
     save_state_to_history()
     store['ideas'].append(node)
+    save_data(store)  # Save to file after change
 
 def get_central() -> Optional[int]:
     return get_store()['central']
@@ -69,6 +109,7 @@ def get_central() -> Optional[int]:
 def set_central(mid: Optional[int]):
     save_state_to_history()
     get_store()['central'] = mid
+    save_data(get_store())  # Save to file after change
 
 def get_next_id() -> int:
     return get_store()['next_id']
@@ -82,6 +123,7 @@ def get_current_theme() -> str:
 
 def set_current_theme(theme_name: str):
     get_store()['current_theme'] = theme_name
+    save_data(get_store())  # Save to file after change
 
 # ---------------- Error Handling ----------------
 
@@ -271,6 +313,16 @@ def handle_message(msg_data):
             st.session_state['edit_node'] = int(pl['id'])
             st.rerun()
 
+        elif action == 'select_node':
+            st.session_state['selected_node'] = int(pl['id'])
+            st.rerun()
+
+        elif action == 'center_node':
+            node_id = int(pl['id'])
+            if node_id in {n['id'] for n in ideas}:
+                set_central(node_id)
+                st.rerun()
+
         elif action == 'delete':
             save_state_to_history()
             node_id = int(pl['id'])
@@ -289,6 +341,8 @@ def handle_message(msg_data):
             set_ideas([n for n in ideas if n['id'] not in to_remove])
             if get_central() in to_remove:
                 set_central(None)
+            if st.session_state.get('selected_node') in to_remove:
+                st.session_state['selected_node'] = None
             st.rerun()  # Force rerun after deletion
 
         elif action == 'reparent':
@@ -542,7 +596,7 @@ try:
                 
                 # Use smaller emoji icons for better alignment
                 if col2.button("🎯", key=f"center_{node['id']}", help="Center this node"):
-                    set_central(node['id'])
+                    st.session_state['center_node'] = node['id']
                     st.rerun()
                 
                 if col3.button("✏️", key=f"edit_{node['id']}", help="Edit this node"):
@@ -550,24 +604,34 @@ try:
                     st.rerun()
                 
                 if col4.button("🗑️", key=f"delete_{node['id']}", help="Delete this node"):
-                    save_state_to_history()
-                    node_id = node['id']
-                    
-                    # Get node and all its descendants
-                    to_remove = set()
-                    
-                    def collect_descendants(node_id):
-                        to_remove.add(node_id)
-                        for child in [n for n in ideas if n.get('parent') == node_id]:
-                            collect_descendants(child['id'])
-                    
-                    collect_descendants(node_id)
-                    
-                    # Remove collected nodes
-                    set_ideas([n for n in ideas if n['id'] not in to_remove])
-                    if get_central() in to_remove:
-                        set_central(None)
-                    st.rerun()  # Force rerun after deletion
+                    st.session_state['delete_node'] = node['id']
+                    st.rerun()
+
+    # Handle button actions from session state
+    if 'center_node' in st.session_state:
+        node_id = st.session_state.pop('center_node')
+        if node_id in {n['id'] for n in ideas}:
+            set_central(node_id)
+            st.rerun()
+
+    if 'delete_node' in st.session_state:
+        node_id = st.session_state.pop('delete_node')
+        if node_id in {n['id'] for n in ideas}:
+            save_state_to_history()
+            to_remove = set()
+
+            def collect_descendants(node_id):
+                to_remove.add(node_id)
+                for child in [n for n in ideas if n.get('parent') == node_id]:
+                    collect_descendants(child['id'])
+
+            collect_descendants(node_id)
+            set_ideas([n for n in ideas if n['id'] not in to_remove])
+            if get_central() in to_remove:
+                set_central(None)
+            if st.session_state.get('selected_node') in to_remove:
+                st.session_state['selected_node'] = None
+            st.rerun()
 
     # Node Edit Modal
     if 'edit_node' in st.session_state and st.session_state['edit_node'] is not None:
@@ -657,9 +721,19 @@ try:
             """)
         st.stop()
 
+    # Add canvas expansion toggle
+    canvas_expanded = st.session_state.get('canvas_expanded', False)
+    expand_button = st.button("🔍 Expand Canvas" if not canvas_expanded else "🔍 Collapse Canvas")
+    if expand_button:
+        st.session_state['canvas_expanded'] = not canvas_expanded
+        st.rerun()
+
+    # Set canvas height based on expansion state
+    canvas_height = "1000px" if canvas_expanded else "650px"
+
     # Build PyVis Network
     theme = get_theme()
-    net = Network(height="650px", width="100%", directed=True, bgcolor=theme['background'])
+    net = Network(height=canvas_height, width="100%", directed=True, bgcolor=theme['background'])
 
     # Configure physics for better node placement and shorter connections
     net.barnes_hut(
@@ -735,7 +809,9 @@ try:
             // Use URL parameters for communication
             const url = new URL(window.location.href);
             url.searchParams.set('msg', data);
-            window.location.href = url.toString();
+            window.history.pushState({{}}, '', url.toString());
+            // Force a page reload to process the message
+            window.location.reload();
         }} catch (error) {{
             console.error("Failed to send message:", error);
         }}
@@ -781,6 +857,18 @@ try:
         }}
     }});
 
+    // Handle click for node details
+    network.on('click', params => {{
+        try {{
+            if (params.nodes.length === 1) {{
+                const id = params.nodes[0];
+                send('select_node', {{ id }});
+            }}
+        }} catch (error) {{
+            console.error("Error in click handler:", error);
+        }}
+    }});
+
     // Handle double-click for edit
     network.on('doubleClick', params => {{
         try {{
@@ -805,6 +893,47 @@ try:
             }}
         }} catch (error) {{
             console.error("Error in oncontext handler:", error);
+        }}
+    }});
+
+    // Add event listener for right-click
+    network.on('oncontext', params => {{
+        try {{
+            params.event.preventDefault();
+            if (params.nodes.length === 1) {{
+                const id = parseInt(params.nodes[0]);
+                if (confirm('Delete this bubble?')) {{
+                    send('delete', {{ id }});
+                }}
+            }}
+        }} catch (error) {{
+            console.error("Error in right-click handler:", error);
+        }}
+    }});
+
+    // Add event listener for center button clicks
+    document.addEventListener('click', (e) => {{
+        try {{
+            if (e.target && e.target.classList.contains('center-button')) {{
+                const id = parseInt(e.target.dataset.id);
+                send('center_node', {{ id }});
+            }}
+        }} catch (error) {{
+            console.error("Error in center button handler:", error);
+        }}
+    }});
+
+    // Add event listener for delete button clicks
+    document.addEventListener('click', (e) => {{
+        try {{
+            if (e.target && e.target.classList.contains('delete-button')) {{
+                const id = parseInt(e.target.dataset.id);
+                if (confirm('Delete this bubble?')) {{
+                    send('delete', {{ id }});
+                }}
+            }}
+        }} catch (error) {{
+            console.error("Error in delete button handler:", error);
         }}
     }});
 
@@ -860,7 +989,7 @@ try:
 """)
 
     html = net.generate_html() + f"<script>{js}</script>"
-    components.html(html, height=650)
+    components.html(html, height=int(canvas_height.replace("px", "")))
 
     # Check query parameters for messages from JavaScript
     if 'msg' in st.query_params:
@@ -874,28 +1003,34 @@ try:
         except Exception as e:
             handle_exception(e)
 
-    # Node details section when a central node is selected
-    if get_central() is not None:
-        central_node = next((n for n in ideas if n['id'] == get_central()), None)
-        if central_node:
-            st.subheader(f"📌 Selected: {central_node['label']}")
+    # Node details section for both central and selected nodes
+    selected_node_id = st.session_state.get('selected_node')
+    display_node = None
+    
+    if selected_node_id is not None:
+        display_node = next((n for n in ideas if n['id'] == selected_node_id), None)
+    elif get_central() is not None:
+        display_node = next((n for n in ideas if n['id'] == get_central()), None)
 
-            # Display node details
-            if central_node.get('tag'):
-                st.write(f"**Tag:** {central_node['tag']}")
+    if display_node:
+        st.subheader(f"📌 Selected: {display_node['label']}")
 
-            st.write(f"**Urgency:** {central_node['urgency']}")
+        # Display node details
+        if display_node.get('tag'):
+            st.write(f"**Tag:** {display_node['tag']}")
 
-            if central_node.get('description'):
-                st.markdown("**Description:**")
-                st.markdown(central_node['description'])
+        st.write(f"**Urgency:** {display_node['urgency']}")
 
-            # Display children
-            children = [n for n in ideas if n.get('parent') == central_node['id']]
-            if children:
-                st.markdown("**Connected Ideas:**")
-                for child in children:
-                    st.markdown(f"- {child['label']} ({child.get('edge_type', 'default')} connection)")
+        if display_node.get('description'):
+            st.markdown("**Description:**")
+            st.markdown(display_node['description'])
+
+        # Display children
+        children = [n for n in ideas if n.get('parent') == display_node['id']]
+        if children:
+            st.markdown("**Connected Ideas:**")
+            for child in children:
+                st.markdown(f"- {child['label']} ({child.get('edge_type', 'default')} connection)")
 
 except Exception as e:
     handle_exception(e)
