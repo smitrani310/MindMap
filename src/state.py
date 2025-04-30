@@ -4,9 +4,13 @@ import streamlit as st
 import json
 import os
 import logging
+import hashlib
 from src.config import DATA_FILE, ERROR_MESSAGES
 
 logger = logging.getLogger(__name__)
+
+# Cache for data hashing to prevent redundant saves
+_last_save_hash = None
 
 def get_store():
     """Get the store from session state."""
@@ -49,11 +53,22 @@ def set_current_theme(theme_name):
     get_store()['current_theme'] = theme_name
 
 def save_data(data):
-    """Save data to JSON file"""
+    """Save data to JSON file, with caching to prevent redundant writes"""
+    global _last_save_hash
+    
     try:
-        with open(DATA_FILE, 'w') as f:
-            json.dump(data, f)
-        logger.info("Data saved successfully")
+        # Create a hash of the data to check if it has changed
+        data_str = json.dumps(data, sort_keys=True)
+        current_hash = hashlib.md5(data_str.encode()).hexdigest()
+        
+        # Only save if the data has changed
+        if current_hash != _last_save_hash:
+            with open(DATA_FILE, 'w') as f:
+                json.dump(data, f)
+            _last_save_hash = current_hash
+            logger.info("Data saved successfully")
+        else:
+            logger.debug("Skipping save - data unchanged")
     except PermissionError as e:
         logger.error(f"Permission error saving data file: {str(e)}")
         st.error(ERROR_MESSAGES['permission_error'])
@@ -63,10 +78,18 @@ def save_data(data):
 
 def load_data():
     """Load data from JSON file if it exists"""
+    global _last_save_hash
+    
     try:
         if os.path.exists(DATA_FILE):
             with open(DATA_FILE, 'r') as f:
-                return json.load(f)
+                data = json.load(f)
+                
+                # Update the hash cache
+                data_str = json.dumps(data, sort_keys=True)
+                _last_save_hash = hashlib.md5(data_str.encode()).hexdigest()
+                
+                return data
         logger.info("Data file not found, using default settings")
         return None
     except json.JSONDecodeError as e:

@@ -502,11 +502,11 @@ try:
                 new_description = st.text_area("Description", value=node.get('description', ''), height=150)
                 col1, col2 = st.columns(2)
                 new_urgency = col1.selectbox("Urgency",
-                                             list(get_theme()['urgency_colors'].keys()),
-                                             index=list(get_theme()['urgency_colors'].keys()).index(node.get('urgency', 'low')))
+                                            list(get_theme()['urgency_colors'].keys()),
+                                            index=list(get_theme()['urgency_colors'].keys()).index(node.get('urgency', 'low')))
                 new_tag = col2.selectbox("Tag",
-                                         [''] + list(TAGS.keys()),
-                                         index=([''] + list(TAGS.keys())).index(node.get('tag', '')) if node.get('tag', '') in [''] + list(TAGS.keys()) else 0)
+                                        [''] + list(TAGS.keys()),
+                                        index=([''] + list(TAGS.keys())).index(node.get('tag', '')) if node.get('tag', '') in [''] + list(TAGS.keys()) else 0)
 
                 if node['parent'] is not None:
                     parent_node = next((n for n in ideas if n['id'] == node['parent']), None)
@@ -516,14 +516,21 @@ try:
                         current_parent = ""
                     new_parent = st.text_input("Parent label (blank → no parent)", value=current_parent)
                     new_edge_type = st.selectbox("Connection Type",
-                                                 list(get_theme()['edge_colors'].keys()),
-                                                 index=list(get_theme()['edge_colors'].keys()).index(node.get('edge_type', 'default')))
+                                                list(get_theme()['edge_colors'].keys()),
+                                                index=list(get_theme()['edge_colors'].keys()).index(node.get('edge_type', 'default')) 
+                                                    if node.get('edge_type', 'default') in get_theme()['edge_colors'] 
+                                                    else 0)
                 else:
                     new_parent = st.text_input("Parent label (blank → no parent)")
                     new_edge_type = st.selectbox("Connection Type", list(get_theme()['edge_colors'].keys()))
 
+                # Form buttons - ensure we have submit buttons
                 col1, col2 = st.columns(2)
-                if col1.form_submit_button("Save Changes"):
+                submitted = col1.form_submit_button("Save Changes")
+                cancelled = col2.form_submit_button("Cancel")
+                
+                # Handle form submission logic after the form
+                if submitted:
                     save_state_to_history()
                     node['label'] = new_label
                     node['description'] = new_description
@@ -550,7 +557,7 @@ try:
                     st.session_state['edit_node'] = None
                     st.rerun()
 
-                if col2.form_submit_button("Cancel"):
+                if cancelled:
                     st.session_state['edit_node'] = None
                     st.rerun()
 
@@ -672,6 +679,9 @@ try:
         pid = n.get('parent')
         if pid in id_set:
             edge_type = n.get('edge_type', 'default')
+            # Make sure the edge type is valid for the current theme
+            if edge_type not in get_theme()['edge_colors']:
+                edge_type = 'default'  # Fallback to default if not in theme
             edge_color = get_edge_color(edge_type)
             net.add_edge(pid, n['id'], arrows='to', color=edge_color, title=edge_type, length=edge_length)
 
@@ -680,14 +690,18 @@ try:
         js_handlers = f.read()
 
     # Generate HTML with injected JavaScript
-    html = net.generate_html() 
+    network_html = net.generate_html()
     
-    # Modify the HTML to remove borders and add custom styling
-    html = html.replace('<body style="margin:0">', 
-                        '<body style="margin:0; padding:0; overflow:hidden;">')
+    # Use string manipulation instead of regex for better performance
+    html_parts = network_html.split('<body style="margin:0">', 1)
+    if len(html_parts) > 1:
+        pre_body, post_body = html_parts
+        html = f"{pre_body}<body style=\"margin:0; padding:0; overflow:hidden;\">{post_body}"
+    else:
+        html = network_html
     
-    # Add custom CSS to make the canvas seamless
-    html = html.replace('</head>', '''
+    # Add custom CSS to make the canvas seamless - use direct insertion
+    css_injection = '''
     <style>
     #mynetwork {
         border: none !important;
@@ -695,14 +709,27 @@ try:
         box-shadow: none !important;
     }
     </style>
-    </head>
-    ''')
+    '''
     
-    # Add the JavaScript handlers
-    html = html + f"<script>{js_handlers}</script>"
+    html_parts = html.split('</head>', 1)
+    if len(html_parts) > 1:
+        pre_head, post_head = html_parts
+        html = f"{pre_head}{css_injection}</head>{post_head}"
     
-    # Render the HTML with the appropriate height
-    components.html(html, height=int(canvas_height.replace("px", "")), scrolling=False)
+    # Add the JavaScript handlers - append to end of body
+    html_parts = html.split('</body>', 1)
+    if len(html_parts) > 1:
+        pre_body_end, post_body_end = html_parts
+        html = f"{pre_body_end}<script>{js_handlers}</script></body>{post_body_end}"
+    else:
+        html = f"{html}<script>{js_handlers}</script>"
+    
+    # Render the HTML with the appropriate height - remove unsupported key parameter
+    components.html(
+        html, 
+        height=int(canvas_height.replace("px", "")), 
+        scrolling=False
+    )
 
     # Process form submissions instead of query parameters
     action = st.query_params.get('action', None)

@@ -4,6 +4,9 @@ from typing import List, Dict, Any
 from copy import deepcopy
 import streamlit as st
 
+# Maximum number of states to keep in history
+MAX_HISTORY_SIZE = 50
+
 def get_history() -> List[Dict[str, Any]]:
     """Get the history stack from session state."""
     return st.session_state.get('store', {}).get('history', [])
@@ -39,6 +42,11 @@ def save_state_to_history() -> None:
     }
     
     history.append(current_state)
+    
+    # Limit history size to prevent memory issues
+    if len(history) > MAX_HISTORY_SIZE:
+        history = history[-MAX_HISTORY_SIZE:]
+        
     set_history(history)
     set_history_index(len(history) - 1)
 
