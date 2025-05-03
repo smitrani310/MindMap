@@ -2,6 +2,9 @@
 import streamlit as st
 from src.themes import URGENCY_SIZE, TAGS, THEMES, PRIMARY_NODE_BORDER, RGBA_ALPHA
 import functools
+import logging
+import colorsys
+import re
 
 # Cache for memoization
 _size_cache = {}
@@ -11,10 +14,29 @@ def clear_size_cache():
     global _size_cache
     _size_cache = {}
 
-def hex_to_rgb(hex_color):
-    """Convert hex color to RGB."""
-    hex_color = hex_color.lstrip('#')
-    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+def hex_to_rgb(color_str):
+    """Convert hex or HSL color to RGB."""
+    logger = logging.getLogger(__name__)
+    
+    # Handle HSL format
+    hsl_match = re.match(r'hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)', color_str)
+    if hsl_match:
+        h, s, l = [int(x) for x in hsl_match.groups()]
+        logger.debug(f"Converting HSL color: {color_str}")
+        h /= 360
+        s /= 100
+        l /= 100
+        r, g, b = colorsys.hls_to_rgb(h, l, s)
+        return (int(r*255), int(g*255), int(b*255))
+    
+    # Handle hex format
+    try:
+        hex_color = color_str.lstrip('#')
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    except ValueError as e:
+        logger.error(f"Invalid color format: {color_str}")
+        # Return a default gray color when conversion fails
+        return (128, 128, 128)
 
 def get_theme(theme_name=None):
     """Get theme settings."""
@@ -70,9 +92,36 @@ def get_urgency_color(urgency):
     return get_theme()['urgency_colors'].get(urgency, '#808080')
 
 def get_tag_color(tag):
-    """Get color for tag."""
+    """Get color for tag, including custom tags."""
     from src.state import get_store
+    
+    # Skip processing for empty tags
+    if not tag:
+        return '#808080'  # Default gray
+    
+    logger = logging.getLogger(__name__)
+    
+    # Check custom colors first
     custom_colors = get_store().get('settings', {}).get('custom_colors', {}).get('tags', {})
     if tag in custom_colors:
-        return custom_colors[tag]
-    return TAGS.get(tag, {}).get('color', '#808080') 
+        color = custom_colors[tag]
+        logger.debug(f"Using custom color for tag '{tag}': {color}")
+        return color
+    
+    # Check builtin tags from TAGS dictionary
+    if tag in TAGS:
+        color = TAGS[tag].get('color', '#808080')
+        logger.debug(f"Using builtin color for tag '{tag}': {color}")
+        return color
+    
+    # For a custom tag without a saved color, generate one based on the tag name
+    hash_value = sum(ord(c) for c in tag)
+    hue = hash_value % 360
+    
+    # Convert HSL to hex directly instead of returning HSL string
+    h, s, l = hue/360.0, 0.7, 0.6
+    r, g, b = colorsys.hls_to_rgb(h, l, s)
+    hex_color = "#{:02x}{:02x}{:02x}".format(int(r*255), int(g*255), int(b*255))
+    
+    logger.debug(f"Generated hex color for tag '{tag}': {hex_color}")
+    return hex_color 

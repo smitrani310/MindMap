@@ -21,6 +21,7 @@ import datetime
 import traceback
 import os
 import logging
+import colorsys
 from typing import List, Dict, Optional, Tuple, Set
 from copy import deepcopy
 
@@ -45,7 +46,7 @@ from src.handlers import handle_message, handle_exception, is_circular
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Set to DEBUG for more detailed logging
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -156,11 +157,94 @@ try:
             help="Enhance the size difference between urgency levels (higher = more pronounced difference)"
         )
         
-        # Color customization section
-        st.markdown("### Color Customization")
-        
         # Get custom colors or use defaults
         custom_colors = settings.get('custom_colors', DEFAULT_SETTINGS['custom_colors'])
+        
+        # Custom Tags Management
+        st.markdown("### Tag Management")
+        
+        # Get existing custom tags
+        custom_tags = settings.get('custom_tags', [])
+        
+        # Input for adding new custom tags
+        new_tag_col1, new_tag_col2 = st.columns([3, 1])
+        new_tag = new_tag_col1.text_input("New Custom Tag", key="new_custom_tag")
+        
+        add_tag_clicked = new_tag_col2.button("Add Tag")
+        if add_tag_clicked and new_tag and new_tag not in custom_tags and new_tag not in TAGS:
+            # Generate a color for the new tag
+            hash_value = sum(ord(c) for c in new_tag)
+            hue = hash_value % 360
+            
+            # Convert HSL to hex for the color picker
+            h, s, l = hue/360.0, 0.7, 0.6  # convert to 0-1 range
+            r, g, b = colorsys.hls_to_rgb(h, l, s)
+            hex_color = "#{:02x}{:02x}{:02x}".format(int(r*255), int(g*255), int(b*255))
+            
+            # Add the tag to custom tags list
+            custom_tags.append(new_tag)
+            
+            # Add the tag color to custom colors
+            if 'tags' not in custom_colors:
+                custom_colors['tags'] = {}
+            custom_colors['tags'][new_tag] = hex_color
+            
+            # Save changes
+            settings['custom_tags'] = custom_tags
+            settings['custom_colors'] = custom_colors
+            get_store()['settings'] = settings
+            
+            # Log the color assignment for debugging
+            logger.info(f"Added new tag '{new_tag}' with color {hex_color}")
+            
+            save_data(get_store())
+            st.rerun()
+            
+        # Display custom tags for removal and color editing
+        if custom_tags:
+            st.markdown("**Custom Tags:**")
+            
+            # For each custom tag, show name, color picker and delete button
+            for i, tag in enumerate(custom_tags):
+                col1, col2, col3 = st.columns([2, 2, 1])
+                
+                # Tag name
+                col1.write(f"• {tag}")
+                
+                # Color picker
+                current_color = custom_colors.get('tags', {}).get(tag, "#808080")
+                new_color = col2.color_picker(
+                    "Color", 
+                    current_color, 
+                    key=f"color_picker_{tag}_{i}",
+                    label_visibility="collapsed"
+                )
+                
+                # Update color if changed
+                if new_color != current_color:
+                    if 'tags' not in custom_colors:
+                        custom_colors['tags'] = {}
+                    custom_colors['tags'][tag] = new_color
+                    settings['custom_colors'] = custom_colors
+                    get_store()['settings'] = settings
+                    save_data(get_store())
+                
+                # Delete button
+                if col3.button("🗑️", key=f"remove_tag_{i}", help=f"Remove {tag}"):
+                    custom_tags.remove(tag)
+                    if tag in custom_colors.get('tags', {}):
+                        del custom_colors['tags'][tag]
+                    
+                    settings['custom_tags'] = custom_tags
+                    settings['custom_colors'] = custom_colors
+                    get_store()['settings'] = settings
+                    save_data(get_store())
+                    st.rerun()
+        else:
+            st.info("No custom tags yet. Add one above.")
+        
+        # Color customization section
+        st.markdown("### Color Customization")
         
         # Add color mode toggle
         color_mode = settings.get('color_mode', DEFAULT_SETTINGS['color_mode'])
@@ -222,16 +306,19 @@ try:
         with color_tab2:
             tag_colors = custom_colors.get('tags', DEFAULT_SETTINGS['custom_colors']['tags'])
             
-            # Create 2 columns for tag colors
+            # Get all tags (built-in only)
+            builtin_tags = list(TAGS.keys())
+            
+            st.markdown("#### Built-in Tags")
+            
+            # Create 2 columns for built-in tag colors
             tag_col1, tag_col2 = st.columns(2)
             
-            # List all tags
-            all_tags = list(TAGS.keys())
-            half_length = len(all_tags) // 2 + len(all_tags) % 2
+            half_length = len(builtin_tags) // 2 + len(builtin_tags) % 2
             
-            # First column of tags
+            # First column of built-in tags
             with tag_col1:
-                for tag in all_tags[:half_length]:
+                for tag in builtin_tags[:half_length]:
                     tag_color = st.color_picker(
                         f"{tag.capitalize()}", 
                         tag_colors.get(tag, TAGS[tag]['color']),
@@ -241,9 +328,9 @@ try:
                     if tag_color != tag_colors.get(tag):
                         tag_colors[tag] = tag_color
             
-            # Second column of tags
+            # Second column of built-in tags
             with tag_col2:
-                for tag in all_tags[half_length:]:
+                for tag in builtin_tags[half_length:]:
                     tag_color = st.color_picker(
                         f"{tag.capitalize()}", 
                         tag_colors.get(tag, TAGS[tag]['color']),
@@ -252,6 +339,9 @@ try:
                     # Update if changed
                     if tag_color != tag_colors.get(tag):
                         tag_colors[tag] = tag_color
+            
+            # Note about custom tags
+            st.info("Custom tag colors can be changed in the Tag Management section above.")
             
             # Update tag colors
             custom_colors['tags'] = tag_colors
@@ -262,16 +352,19 @@ try:
             spring_strength != default_spring_strength or 
             size_multiplier != default_size_multiplier or
             custom_colors != settings.get('custom_colors', {}) or
+            custom_tags != settings.get('custom_tags', []) or
             new_color_mode != color_mode
         )
         
         if settings_changed:
+            # Update the store with new settings
             get_store()['settings'] = {
                 'edge_length': edge_length,
                 'spring_strength': spring_strength,
                 'size_multiplier': size_multiplier,
                 'canvas_expanded': settings.get('canvas_expanded', False),
                 'color_mode': new_color_mode,
+                'custom_tags': custom_tags,
                 'custom_colors': custom_colors
             }
             save_data(get_store())
@@ -352,7 +445,15 @@ try:
         description = st.text_area("Description (optional)", height=100)
         col1, col2 = st.columns(2)
         urgency = col1.selectbox("Urgency", list(get_theme()['urgency_colors'].keys()))
-        tag = col2.selectbox("Tag", [''] + list(TAGS.keys()))
+        
+        # Get all tags, including custom ones
+        settings = get_store().get('settings', {})
+        custom_tags = settings.get('custom_tags', [])
+        all_available_tags = [''] + list(TAGS.keys()) + custom_tags
+        
+        # Display the tags dropdown
+        tag = col2.selectbox("Tag", all_available_tags)
+        
         parent_label = st.text_input("Parent label (blank → current center)")
         edge_type = st.selectbox("Connection Type", list(get_theme()['edge_colors'].keys()))
 
@@ -504,9 +605,21 @@ try:
                 new_urgency = col1.selectbox("Urgency",
                                             list(get_theme()['urgency_colors'].keys()),
                                             index=list(get_theme()['urgency_colors'].keys()).index(node.get('urgency', 'low')))
+                
+                # Get all tags, including custom ones
+                settings = get_store().get('settings', {})
+                custom_tags = settings.get('custom_tags', [])
+                all_available_tags = [''] + list(TAGS.keys()) + custom_tags
+                
+                # Find the index of the current tag or default to empty
+                current_tag = node.get('tag', '')
+                tag_index = 0
+                if current_tag in all_available_tags:
+                    tag_index = all_available_tags.index(current_tag)
+                
                 new_tag = col2.selectbox("Tag",
-                                        [''] + list(TAGS.keys()),
-                                        index=([''] + list(TAGS.keys())).index(node.get('tag', '')) if node.get('tag', '') in [''] + list(TAGS.keys()) else 0)
+                                        all_available_tags,
+                                        index=tag_index)
 
                 if node['parent'] is not None:
                     parent_node = next((n for n in ideas if n['id'] == node['parent']), None)
@@ -634,11 +747,21 @@ try:
         # Get the color mode from settings
         color_mode = get_store().get('settings', {}).get('color_mode', 'urgency')
         
+        # Log node and coloring details
+        node_id = n.get('id')
+        node_tag = n.get('tag', '')
+        node_urgency = n.get('urgency', 'medium')
+        logger.debug(f"Coloring node {node_id} with tag='{node_tag}', urgency='{node_urgency}', mode='{color_mode}'")
+        
         # Set color based on tag or urgency depending on color mode
-        if color_mode == 'tag' and n.get('tag') and n['tag'] in TAGS:
+        if color_mode == 'tag' and n.get('tag'):
+            # Use tag color if available
             color_hex = get_tag_color(n['tag'])
+            logger.debug(f"Node {node_id}: Using tag color {color_hex} for tag '{n['tag']}'")
         else:
+            # Fall back to urgency color
             color_hex = get_urgency_color(n['urgency'])
+            logger.debug(f"Node {node_id}: Using urgency color {color_hex} for '{n['urgency']}'")
 
         r, g, b = hex_to_rgb(color_hex)
         bg, bd = f"rgba({r},{g},{b},{RGBA_ALPHA})", f"rgba({r},{g},{b},1)"

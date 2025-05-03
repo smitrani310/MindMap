@@ -10,6 +10,7 @@ DEFAULT_SETTINGS = {
     'size_multiplier': 1.0,
     'canvas_expanded': False,
     'color_mode': 'urgency',  # 'urgency' or 'tag'
+    'custom_tags': [],  # For storing user-created tags
     'custom_colors': {
         'urgency': {
             'high': '#FF5252',
