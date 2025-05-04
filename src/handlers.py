@@ -1,7 +1,7 @@
 # Message/event handlers and error handling for MindMap
 import streamlit as st
 import logging
-from src.state import get_ideas, get_central, set_central, get_next_id, increment_next_id, add_idea, set_ideas
+from src.state import get_ideas, get_central, set_central, get_next_id, increment_next_id, add_idea, set_ideas, get_store, save_data
 from src.history import save_state_to_history, perform_undo, perform_redo
 from src.utils import recalc_size
 
@@ -64,6 +64,7 @@ def handle_message(msg_data):
                 st.rerun()
         elif action == 'pos':
             save_state_to_history()
+            position_updated = False
             for k, v in pl.items():
                 try:
                     node_id = int(k)
@@ -72,11 +73,17 @@ def handle_message(msg_data):
                         # Validate position data
                         if isinstance(v, dict) and 'x' in v and 'y' in v:
                             node['x'], node['y'] = v['x'], v['y']
+                            position_updated = True
                         else:
                             logger.warning(f"Invalid position data: {v}")
                 except (ValueError, TypeError) as e:
                     logger.error(f"Invalid node ID or position: {k} -> {v}")
                     st.error(f"Invalid node ID: {k}")
+            
+            # Save position changes to data file
+            if position_updated:
+                logger.debug("Saving node position changes")
+                save_data(get_store())
         elif action == 'edit_modal':
             try:
                 node_id = int(pl['id'])
@@ -132,6 +139,10 @@ def handle_message(msg_data):
                 # Also clear selected node if it was deleted
                 if 'selected_node' in st.session_state and st.session_state['selected_node'] in to_remove:
                     st.session_state['selected_node'] = None
+                
+                # Save changes to data file
+                logger.debug(f"Saving after deleting node {node_id} and {len(to_remove)-1} descendants")
+                save_data(get_store())
                     
                 st.rerun()
             except (ValueError, TypeError, KeyError) as e:
@@ -161,6 +172,10 @@ def handle_message(msg_data):
                 child['parent'] = parent_id
                 if not child.get('edge_type'):
                     child['edge_type'] = 'default'
+                
+                # Save changes to data file
+                logger.debug(f"Saving after reparenting node {child_id} to parent {parent_id}")
+                save_data(get_store())
                     
                 st.rerun()
             except (ValueError, TypeError, KeyError) as e:
@@ -189,6 +204,11 @@ def handle_message(msg_data):
                 recalc_size(new_node)
                 add_idea(new_node)
                 increment_next_id()
+                
+                # Save changes to data file
+                logger.debug(f"Saving after creating new node with ID {new_node['id']}")
+                save_data(get_store())
+                
                 st.rerun()
             except (KeyError, ValueError) as e:
                 logger.error(f"Invalid new node request: {pl}")
