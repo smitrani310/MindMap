@@ -811,6 +811,110 @@ try:
     # Load and inject JavaScript handlers
     with open('src/network_handlers.js', 'r') as f:
         js_handlers = f.read()
+    
+    # Create a simplified combined script
+    search_query = search_q if search_q else ""
+    js_combined = f"""
+    // Combined network handlers and initialization script
+    {js_handlers}
+    
+    // Current search query: {search_query}
+    const currentSearchQuery = "{search_query}";
+    
+    // Wait for DOM to be fully loaded
+    document.addEventListener('DOMContentLoaded', function() {{
+        console.log('DOM loaded, initializing network');
+        
+        // Function to find the network instance
+        function findNetworkInstance() {{
+            // Try to get network from the div
+            var networkDiv = document.getElementById('mynetwork');
+            if (networkDiv) {{
+                // Look for canvas nested in the network div
+                var canvasElements = networkDiv.querySelectorAll('canvas');
+                if (canvasElements.length > 0) {{
+                    for (var i = 0; i < canvasElements.length; i++) {{
+                        if (canvasElements[i].network) {{
+                            console.log('Found network via canvas element');
+                            return canvasElements[i].network;
+                        }}
+                    }}
+                }}
+                
+                // Check direct properties
+                if (networkDiv.network) {{
+                    console.log('Found network via direct property');
+                    return networkDiv.network;
+                }}
+                
+                // Check for pyvis data attribute
+                if (networkDiv.hasAttribute && networkDiv.hasAttribute('data-vis-network')) {{
+                    try {{
+                        console.log('Found network via data attribute');
+                        return JSON.parse(networkDiv.getAttribute('data-vis-network'));
+                    }} catch (e) {{
+                        console.error('Error parsing network data attribute:', e);
+                    }}
+                }}
+                
+                // Look for network in div.__proto__
+                try {{
+                    var proto = Object.getPrototypeOf(networkDiv);
+                    if (proto && proto.network) {{
+                        console.log('Found network via prototype');
+                        return proto.network;
+                    }}
+                }} catch (e) {{
+                    console.error('Error checking prototype:', e);
+                }}
+            }}
+            
+            // Try to find any elements with vis-network class
+            var visNetworkElements = document.querySelectorAll('.vis-network');
+            if (visNetworkElements.length > 0) {{
+                for (var i = 0; i < visNetworkElements.length; i++) {{
+                    if (visNetworkElements[i].network) {{
+                        console.log('Found network via vis-network class element');
+                        return visNetworkElements[i].network;
+                    }}
+                }}
+            }}
+            
+            return null;
+        }}
+        
+        // Try to find the network with progressive attempts
+        let attempts = 0;
+        const maxAttempts = 10;
+        const checkInterval = setInterval(function() {{
+            const network = findNetworkInstance();
+            
+            if (network) {{
+                console.log('Network found, initializing handlers');
+                clearInterval(checkInterval);
+                
+                // Initialize handlers once the network is found
+                initializeNetworkHandlers(network, currentSearchQuery);
+                
+                // Enable interactions
+                network.setOptions({{ 
+                    interaction: {{
+                        dragNodes: true,
+                        dragView: true,
+                        zoomView: true,
+                        hover: true,
+                        multiselect: true
+                    }}
+                }});
+            }} else if (attempts >= maxAttempts) {{
+                console.error('Network not found after multiple attempts');
+                clearInterval(checkInterval);
+            }}
+            
+            attempts++;
+        }}, 200);
+    }});
+    """
 
     # Generate HTML with injected JavaScript
     network_html = net.generate_html()
@@ -834,18 +938,67 @@ try:
     </style>
     '''
     
+    # Add debug flag for network initialization
+    debug_script = '''
+    <script>
+    window.DEBUG = {
+        enabled: true,
+        network_debug: true
+    };
+    </script>
+    '''
+    
     html_parts = html.split('</head>', 1)
     if len(html_parts) > 1:
         pre_head, post_head = html_parts
-        html = f"{pre_head}{css_injection}</head>{post_head}"
+        html = f"{pre_head}{css_injection}{debug_script}</head>{post_head}"
     
-    # Add the JavaScript handlers - append to end of body
+    # Add the combined JavaScript - append to end of body
     html_parts = html.split('</body>', 1)
     if len(html_parts) > 1:
         pre_body_end, post_body_end = html_parts
-        html = f"{pre_body_end}<script>{js_handlers}</script></body>{post_body_end}"
+        
+        # Add a script to directly expose the network for easier access
+        network_injection = '''
+        <script>
+        // Directly inject a reference to find the network
+        window.onload = function() {
+            // Wait a moment for the network to initialize
+            setTimeout(function() {
+                var network = null;
+                var networkDiv = document.getElementById('mynetwork');
+                if (networkDiv) {
+                    console.log('Found network div, attempting to attach direct reference');
+                    // Create a global variable to hold the network
+                    window.visNetwork = null;
+                    
+                    // Function to retry finding the network
+                    function findAndAttachNetwork() {
+                        var canvasElements = networkDiv.querySelectorAll('canvas');
+                        for (var i = 0; i < canvasElements.length; i++) {
+                            if (canvasElements[i].network) {
+                                window.visNetwork = canvasElements[i].network;
+                                console.log('Successfully attached network to window.visNetwork');
+                                return true;
+                            }
+                        }
+                        return false;
+                    }
+                    
+                    // First attempt
+                    if (!findAndAttachNetwork()) {
+                        // Retry after a delay
+                        setTimeout(findAndAttachNetwork, 500);
+                    }
+                }
+            }, 100);
+        };
+        </script>
+        '''
+        
+        html = f"{pre_body_end}<script>{js_combined}</script>{network_injection}</body>{post_body_end}"
     else:
-        html = f"{html}<script>{js_handlers}</script>"
+        html = f"{html}<script>{js_combined}</script>"
     
     # Render the HTML with the appropriate height - remove unsupported key parameter
     components.html(
