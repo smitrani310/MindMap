@@ -69,30 +69,56 @@ def rotate_logs(max_logs=20):
 # Perform log rotation
 rotate_logs()
 
-# Generate a unique log filename with timestamp
-current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-log_filename = os.path.join(logs_dir, f"mindmap_session_{current_time}.log")
+# Initialize logging only if not already initialized
+if 'log_filename' not in st.session_state:
+    # Generate a unique log filename with timestamp
+    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    st.session_state['log_filename'] = os.path.join(logs_dir, f"mindmap_session_{current_time}.log")
+    
+    # Set up file handler
+    file_handler = logging.FileHandler(st.session_state['log_filename'])
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 
-# Set up file handler
-file_handler = logging.FileHandler(log_filename)
-file_handler.setLevel(logging.DEBUG)
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    # Set up console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
 
-# Set up console handler
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+    root_logger.handlers = []  # Remove any existing handlers
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
 
-# Configure root logger
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.DEBUG)
-root_logger.handlers = []  # Remove any existing handlers
-root_logger.addHandler(file_handler)
-root_logger.addHandler(console_handler)
+    # Get logger for this module
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting new session. Logging to: {st.session_state['log_filename']}")
 
-# Get logger for this module
-logger = logging.getLogger(__name__)
-logger.info(f"Starting new session. Logging to: {log_filename}")
+# Add a function to create a new log file
+def create_new_log():
+    # Close existing file handlers
+    for handler in logging.getLogger().handlers[:]:
+        handler.close()
+        logging.getLogger().removeHandler(handler)
+    
+    # Generate new log filename
+    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    st.session_state['log_filename'] = os.path.join(logs_dir, f"mindmap_session_{current_time}.log")
+    
+    # Set up new file handler
+    file_handler = logging.FileHandler(st.session_state['log_filename'])
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    
+    # Add new handlers
+    logging.getLogger().addHandler(file_handler)
+    logging.getLogger().addHandler(logging.StreamHandler())
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"Created new log file: {st.session_state['log_filename']}")
+    return st.session_state['log_filename']
 
 # Initialize session state with persisted data
 if 'store' not in st.session_state:
@@ -578,6 +604,12 @@ try:
             current_log = log_files[0]
             st.caption(f"Current: {current_log}")
             
+            # Add button to create new log
+            if st.button("Create New Log"):
+                new_log = create_new_log()
+                st.success(f"Created new log file: {new_log}")
+                st.rerun()
+            
             # Option to view the current log
             if st.button("View Current Log"):
                 with open(os.path.join(logs_dir, current_log), 'r') as f:
@@ -998,27 +1030,41 @@ try:
     payload_str = st.query_params.get('payload', None)
     
     # Debug output for query parameters
-    logger.info(f"Query parameters: action={action}, payload={payload_str}")
+    logger.info(f"Query parameters received: action={action}, payload={payload_str}")
     
     if action and payload_str:
         try:
+            logger.info("Processing message from canvas...")
             payload = json.loads(payload_str)
             # Create a message data structure
             msg_data = {'type': action, 'payload': payload}
-            logger.info(f"Processing message: {msg_data}")
+            logger.info(f"Message data structure created: {msg_data}")
+            
+            # Log the current state before processing
+            logger.info(f"Current state before processing: central={get_central()}, selected={st.session_state.get('selected_node')}")
+            
+            # Process the message
             handle_message(msg_data)
+            logger.info("Message processed successfully")
             
             # Save data after handling the message
             save_data(get_store())
+            logger.info("Data saved after message processing")
             
             # Clear parameters after processing
             st.query_params.pop('action', None)
             st.query_params.pop('payload', None)
+            logger.info("Query parameters cleared")
             
             # Force rerun to ensure the UI updates
+            logger.info("Forcing UI rerun")
             st.rerun()
         except Exception as e:
+            logger.error(f"Error processing message: {str(e)}")
+            logger.error(f"Error details: {traceback.format_exc()}")
             handle_exception(e)
+    else:
+        logger.debug("No message to process")
 
     # Node details section for both central and selected nodes
     # Use only the central node approach

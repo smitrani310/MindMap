@@ -1,7 +1,11 @@
 // Network interaction handlers for the Enhanced Mind Map
 
 function initializeNetworkHandlers(network, searchQuery) {
-    console.log('Initializing network handlers...');
+    console.log('Initializing network handlers...', {
+        networkExists: !!network,
+        networkId: network?.id,
+        searchQuery: searchQuery
+    });
     
     // Create a hidden form for message passing
     const formDiv = document.createElement('div');
@@ -14,14 +18,35 @@ function initializeNetworkHandlers(network, searchQuery) {
         </form>
     `;
     document.body.appendChild(formDiv);
+    console.log('Message form created and appended to body');
 
     // Message passing via form submission
     function send(action, payload) {
+        console.log('Attempting to send message:', {action, payload});
         try {
-            console.log('Sending message:', action, payload);
-            document.getElementById('message-type').value = action;
-            document.getElementById('message-payload').value = JSON.stringify(payload);
-            document.getElementById('message-form').submit();
+            const form = document.getElementById('message-form');
+            const typeInput = document.getElementById('message-type');
+            const payloadInput = document.getElementById('message-payload');
+            
+            console.log('Form elements found:', {
+                form: !!form,
+                typeInput: !!typeInput,
+                payloadInput: !!payloadInput
+            });
+            
+            if (!form || !typeInput || !payloadInput) {
+                throw new Error('Required form elements not found');
+            }
+            
+            typeInput.value = action;
+            payloadInput.value = JSON.stringify(payload);
+            console.log('Form values set:', {
+                action: typeInput.value,
+                payload: payloadInput.value
+            });
+            
+            form.submit();
+            console.log('Form submitted successfully');
         } catch (error) {
             console.error("Failed to send message:", error);
         }
@@ -35,7 +60,11 @@ function initializeNetworkHandlers(network, searchQuery) {
 
     // Handle node dragging
     network.on('dragEnd', (params) => {
-        console.log('Drag end event:', params);
+        console.log('Drag end event:', {
+            nodes: params.nodes,
+            event: params.event,
+            pointer: params.pointer
+        });
         if (params.nodes.length === 1) {
             const pos = {};
             const id = params.nodes[0];
@@ -47,18 +76,33 @@ function initializeNetworkHandlers(network, searchQuery) {
 
     // Click for node details
     network.on('click', (params) => {
-        console.log('Click event:', params);
+        console.log('Click event received:', {
+            nodes: params.nodes,
+            event: params.event,
+            pointer: params.pointer,
+            networkState: {
+                selectedNodes: network.getSelectedNodes(),
+                isStabilized: network.isStabilized()
+            }
+        });
+        
         if (params.nodes.length === 1) {
             const id = params.nodes[0];
+            console.log('Node clicked, sending messages for node:', id);
             send('select_node', { id });
-            // Also center the node
             send('center_node', { id });
+        } else {
+            console.log('Click event received but no node was clicked');
         }
     });
 
     // Double-click for edit
     network.on('doubleClick', (params) => {
-        console.log('Double click event:', params);
+        console.log('Double click event:', {
+            nodes: params.nodes,
+            event: params.event,
+            pointer: params.pointer
+        });
         if (params.nodes.length === 1) {
             const id = params.nodes[0];
             send('edit_modal', { id });
@@ -67,7 +111,11 @@ function initializeNetworkHandlers(network, searchQuery) {
 
     // Context menu for delete
     network.on('contextmenu', (params) => {
-        console.log('Context menu event:', params);
+        console.log('Context menu event:', {
+            nodes: params.nodes,
+            event: params.event,
+            pointer: params.pointer
+        });
         params.event.preventDefault();
         if (params.nodes.length === 1) {
             const id = params.nodes[0];
@@ -78,28 +126,14 @@ function initializeNetworkHandlers(network, searchQuery) {
         return false;
     });
 
-    // Keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-        // Only process if not in a text field
-        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-            // Ctrl+Space to center selected node
-            if (e.ctrlKey && e.code === 'Space') {
-                const selectedNodes = network.getSelectedNodes();
-                if (selectedNodes.length === 1) {
-                    send('center_node', { id: selectedNodes[0] });
-                }
-            }
+    // Log all attached event listeners
+    console.log('Network event listeners:', {
+        listeners: network._eventListeners ? Object.keys(network._eventListeners) : [],
+        networkState: {
+            isStabilized: network.isStabilized(),
+            selectedNodes: network.getSelectedNodes(),
+            nodeCount: network.body.data.nodes.length
         }
-    });
-
-    // Add button event listeners for center and delete
-    document.querySelectorAll('.center-button').forEach(button => {
-        button.addEventListener('click', (e) => {
-            const id = e.target.getAttribute('data-id');
-            if (id) {
-                send('center_node', { id: parseInt(id) });
-            }
-        });
     });
 
     // Search highlight
@@ -119,10 +153,20 @@ function initializeNetworkHandlers(network, searchQuery) {
 // Wait for the network to be available
 function waitForNetwork() {
     console.log('Waiting for network...');
+    let attempts = 0;
+    const maxAttempts = 50; // 5 seconds maximum wait time
+    
     const checkInterval = setInterval(() => {
+        attempts++;
+        console.log(`Network check attempt ${attempts}/${maxAttempts}`);
+        
         const networkDiv = document.getElementById('mynetwork');
+        console.log('Network div found:', !!networkDiv);
+        
         if (networkDiv) {
             const canvasElements = networkDiv.querySelectorAll('canvas');
+            console.log('Canvas elements found:', canvasElements.length);
+            
             if (canvasElements.length > 0) {
                 for (let i = 0; i < canvasElements.length; i++) {
                     if (canvasElements[i].network) {
@@ -133,6 +177,11 @@ function waitForNetwork() {
                     }
                 }
             }
+        }
+        
+        if (attempts >= maxAttempts) {
+            console.error('Network initialization timeout - network not found after', maxAttempts, 'attempts');
+            clearInterval(checkInterval);
         }
     }, 100);
 }
