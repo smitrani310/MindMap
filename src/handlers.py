@@ -97,13 +97,15 @@ def handle_message(msg_data):
         elif action == 'select_node':
             try:
                 node_id = int(pl['id'])
+                logger.info(f"Processing select_node action for node ID: {node_id}")
                 if node_id in {n['id'] for n in ideas}:
+                    logger.info(f"Node {node_id} found, setting as selected node")
                     st.session_state['selected_node'] = node_id
                     st.rerun()
                 else:
                     logger.warning(f"Select request for nonexistent node: {node_id}")
             except (ValueError, TypeError, KeyError) as e:
-                logger.error(f"Invalid select node request: {pl}")
+                logger.error(f"Invalid select node request: {pl}, Error: {str(e)}")
         elif action == 'center_node':
             try:
                 node_id = int(pl['id'])

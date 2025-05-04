@@ -45,21 +45,67 @@ from src.themes import THEMES, TAGS, URGENCY_SIZE
 from src.handlers import handle_message, handle_exception, is_circular
 
 # Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,  # Set to DEBUG for more detailed logging
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+import os
+import datetime
+
+# Create logs directory if it doesn't exist
+logs_dir = "logs"
+if not os.path.exists(logs_dir):
+    os.makedirs(logs_dir)
+
+# Log rotation - keep only the last 20 log files
+def rotate_logs(max_logs=20):
+    if os.path.exists(logs_dir):
+        log_files = sorted([f for f in os.listdir(logs_dir) if f.endswith('.log')])
+        if len(log_files) > max_logs:
+            # Remove oldest logs
+            for old_log in log_files[:-max_logs]:
+                try:
+                    os.remove(os.path.join(logs_dir, old_log))
+                    print(f"Removed old log file: {old_log}")
+                except Exception as e:
+                    print(f"Error removing log file {old_log}: {str(e)}")
+
+# Perform log rotation
+rotate_logs()
+
+# Generate a unique log filename with timestamp
+current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+log_filename = os.path.join(logs_dir, f"mindmap_session_{current_time}.log")
+
+# Set up file handler
+file_handler = logging.FileHandler(log_filename)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+# Set up console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+
+# Configure root logger
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
+root_logger.handlers = []  # Remove any existing handlers
+root_logger.addHandler(file_handler)
+root_logger.addHandler(console_handler)
+
+# Get logger for this module
 logger = logging.getLogger(__name__)
+logger.info(f"Starting new session. Logging to: {log_filename}")
 
 # Initialize session state with persisted data
 if 'store' not in st.session_state:
     persisted_data = load_data()
+    logger.info("Loading persisted data for new session")
     if persisted_data:
         st.session_state['store'] = persisted_data
+        logger.info(f"Loaded data with {len(persisted_data.get('ideas', []))} nodes")
         # Update session state with canvas expansion setting if available
         if 'canvas_expanded' in persisted_data.get('settings', {}):
             st.session_state['canvas_expanded'] = persisted_data['settings']['canvas_expanded']
     else:
+        logger.info("No persisted data found, initializing empty store")
         st.session_state['store'] = {
             'ideas': [],
             'central': None,
@@ -73,6 +119,7 @@ if 'store' not in st.session_state:
     # Initialize settings in session state for easy access
     if 'settings' not in get_store():
         get_store()['settings'] = DEFAULT_SETTINGS.copy()
+        logger.info("Initialized default settings")
 
 # ---------------- Main App ----------------
 try:
@@ -371,6 +418,7 @@ try:
         
         if selected_theme != get_current_theme():
             set_current_theme(selected_theme)
+            logger.info(f"Theme changed to: {selected_theme}")
             st.rerun()
 
     # Sidebar Search
@@ -393,6 +441,7 @@ try:
                         node['description'] = node['description'].replace(search_q, replace_q)
                         count += 1
                 st.sidebar.success(f"Replaced {count} instances")
+                logger.info(f"Search and replace: '{search_q}' to '{replace_q}' - {count} instances replaced")
                 if count > 0:
                     save_data(get_store())
                     st.rerun()
@@ -405,6 +454,7 @@ try:
                 data = json.load(uploaded)
                 if not isinstance(data, list):
                     st.error("JSON must be a list")
+                    logger.error(f"Import failed: JSON not a list. Filename: {uploaded.name}")
                 else:
                     save_state_to_history()  # Save current state before import
                     label_map = {item['label'].strip().lower(): item['id'] for item in data}
@@ -422,20 +472,27 @@ try:
                     get_store()['next_id'] = max((i['id'] for i in data), default=-1) + 1
                     set_central(next((i['id'] for i in data if i.get('is_central')), None))
                     save_data(get_store())
+                    logger.info(f"Successfully imported {len(data)} nodes from {uploaded.name}")
                     st.success("Imported bubbles from JSON")
             except Exception as e:
                 handle_exception(e)
+                logger.error(f"Import error: {str(e)}")
 
         ideas = get_ideas()
         if ideas:
             export = [item.copy() for item in ideas]
             for item in export:
                 item['is_central'] = (item['id'] == get_central())
+                
+            # Create filename with timestamp
+            export_filename = f"mindmap_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            
             st.download_button(
                 "💾 Export JSON",
                 data=json.dumps(export, indent=2),
-                file_name=f"mindmap_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json"
+                file_name=export_filename,
+                mime="application/json",
+                on_click=lambda: logger.info(f"Exported {len(export)} nodes to {export_filename}")
             )
 
     # Add Bubble Form
@@ -506,6 +563,62 @@ try:
         - **Ctrl+Y**: Redo (when focused on canvas)
         - **Ctrl+N**: New node (when focused on canvas)
         """)
+    
+    # Logs section
+    with st.sidebar.expander("📊 Logs"):
+        st.write("**Current Session Log:**")
+        
+        # Get list of log files
+        log_files = []
+        if os.path.exists(logs_dir):
+            log_files = sorted([f for f in os.listdir(logs_dir) if f.endswith('.log')], reverse=True)
+        
+        if log_files:
+            # Show current log file
+            current_log = log_files[0]
+            st.caption(f"Current: {current_log}")
+            
+            # Option to view the current log
+            if st.button("View Current Log"):
+                with open(os.path.join(logs_dir, current_log), 'r') as f:
+                    log_content = f.read()
+                st.text_area("Log Content", log_content, height=300)
+            
+            # Download current log
+            with open(os.path.join(logs_dir, current_log), 'r') as f:
+                st.download_button(
+                    "💾 Download Current Log",
+                    f.read(),
+                    file_name=current_log,
+                    mime="text/plain"
+                )
+            
+            # Previous logs dropdown
+            if len(log_files) > 1:
+                st.write("**Previous Session Logs:**")
+                selected_log = st.selectbox(
+                    "Select log file",
+                    options=log_files[1:],
+                    format_func=lambda x: f"{x.replace('mindmap_session_', '').replace('.log', '')}"
+                )
+                
+                if selected_log:
+                    # View selected log
+                    if st.button("View Selected Log"):
+                        with open(os.path.join(logs_dir, selected_log), 'r') as f:
+                            log_content = f.read()
+                        st.text_area("Previous Log Content", log_content, height=300)
+                    
+                    # Download selected log
+                    with open(os.path.join(logs_dir, selected_log), 'r') as f:
+                        st.download_button(
+                            "💾 Download Selected Log",
+                            f.read(),
+                            file_name=selected_log,
+                            mime="text/plain"
+                        )
+        else:
+            st.info("No log files found.")
 
     # Edit / Center List
     ideas = get_ideas()
@@ -741,6 +854,11 @@ try:
 
     # Add nodes and edges to the network
     id_set = {n['id'] for n in ideas}
+    
+    # Get central node
+    central_id = get_central()
+    logger.info(f"Creating nodes with central node ID: {central_id}")
+    
     for n in ideas:
         recalc_size(n)
 
@@ -773,7 +891,16 @@ try:
         elif n.get('urgency') == 'low':
             base_size = base_size / size_multiplier
             
-        size_px = base_size * (1.5 if n['id'] == get_central() else 1)
+        size_px = base_size * (1.5 if n['id'] == central_id else 1)
+        
+        # Apply special highlighting for central node
+        is_central = n['id'] == central_id
+        if is_central:
+            bd = "#FF5722"  # Bright orange border
+            border_width = 3  # Thicker border
+            logger.info(f"Applying special highlighting to central node {n['id']}")
+        else:
+            border_width = 1
 
         # Prepare node title with description for hover text
         title = n['label']
@@ -787,7 +914,7 @@ try:
             'title': title,
             'size': size_px,
             'color': {'background': bg, 'border': bd},
-            'borderWidth': PRIMARY_NODE_BORDER if n['id'] == get_central() else 1,
+            'borderWidth': border_width,
             'shape': 'circle',
             'fixed': {'x': False, 'y': False}
         }
@@ -812,110 +939,6 @@ try:
     with open('src/network_handlers.js', 'r') as f:
         js_handlers = f.read()
     
-    # Create a simplified combined script
-    search_query = search_q if search_q else ""
-    js_combined = f"""
-    // Combined network handlers and initialization script
-    {js_handlers}
-    
-    // Current search query: {search_query}
-    const currentSearchQuery = "{search_query}";
-    
-    // Wait for DOM to be fully loaded
-    document.addEventListener('DOMContentLoaded', function() {{
-        console.log('DOM loaded, initializing network');
-        
-        // Function to find the network instance
-        function findNetworkInstance() {{
-            // Try to get network from the div
-            var networkDiv = document.getElementById('mynetwork');
-            if (networkDiv) {{
-                // Look for canvas nested in the network div
-                var canvasElements = networkDiv.querySelectorAll('canvas');
-                if (canvasElements.length > 0) {{
-                    for (var i = 0; i < canvasElements.length; i++) {{
-                        if (canvasElements[i].network) {{
-                            console.log('Found network via canvas element');
-                            return canvasElements[i].network;
-                        }}
-                    }}
-                }}
-                
-                // Check direct properties
-                if (networkDiv.network) {{
-                    console.log('Found network via direct property');
-                    return networkDiv.network;
-                }}
-                
-                // Check for pyvis data attribute
-                if (networkDiv.hasAttribute && networkDiv.hasAttribute('data-vis-network')) {{
-                    try {{
-                        console.log('Found network via data attribute');
-                        return JSON.parse(networkDiv.getAttribute('data-vis-network'));
-                    }} catch (e) {{
-                        console.error('Error parsing network data attribute:', e);
-                    }}
-                }}
-                
-                // Look for network in div.__proto__
-                try {{
-                    var proto = Object.getPrototypeOf(networkDiv);
-                    if (proto && proto.network) {{
-                        console.log('Found network via prototype');
-                        return proto.network;
-                    }}
-                }} catch (e) {{
-                    console.error('Error checking prototype:', e);
-                }}
-            }}
-            
-            // Try to find any elements with vis-network class
-            var visNetworkElements = document.querySelectorAll('.vis-network');
-            if (visNetworkElements.length > 0) {{
-                for (var i = 0; i < visNetworkElements.length; i++) {{
-                    if (visNetworkElements[i].network) {{
-                        console.log('Found network via vis-network class element');
-                        return visNetworkElements[i].network;
-                    }}
-                }}
-            }}
-            
-            return null;
-        }}
-        
-        // Try to find the network with progressive attempts
-        let attempts = 0;
-        const maxAttempts = 10;
-        const checkInterval = setInterval(function() {{
-            const network = findNetworkInstance();
-            
-            if (network) {{
-                console.log('Network found, initializing handlers');
-                clearInterval(checkInterval);
-                
-                // Initialize handlers once the network is found
-                initializeNetworkHandlers(network, currentSearchQuery);
-                
-                // Enable interactions
-                network.setOptions({{ 
-                    interaction: {{
-                        dragNodes: true,
-                        dragView: true,
-                        zoomView: true,
-                        hover: true,
-                        multiselect: true
-                    }}
-                }});
-            }} else if (attempts >= maxAttempts) {{
-                console.error('Network not found after multiple attempts');
-                clearInterval(checkInterval);
-            }}
-            
-            attempts++;
-        }}, 200);
-    }});
-    """
-
     # Generate HTML with injected JavaScript
     network_html = net.generate_html()
     
@@ -958,47 +981,68 @@ try:
     if len(html_parts) > 1:
         pre_body_end, post_body_end = html_parts
         
-        # Add a script to directly expose the network for easier access
-        network_injection = '''
+        # Create a very simple click handler
+        simple_click_handler = '''
         <script>
-        // Directly inject a reference to find the network
-        window.onload = function() {
-            // Wait a moment for the network to initialize
-            setTimeout(function() {
-                var network = null;
+        // Wait for the network to initialize
+        setTimeout(function() {
+            try {
                 var networkDiv = document.getElementById('mynetwork');
                 if (networkDiv) {
-                    console.log('Found network div, attempting to attach direct reference');
-                    // Create a global variable to hold the network
-                    window.visNetwork = null;
-                    
-                    // Function to retry finding the network
-                    function findAndAttachNetwork() {
-                        var canvasElements = networkDiv.querySelectorAll('canvas');
+                    var canvasElements = networkDiv.querySelectorAll('canvas');
+                    if (canvasElements.length > 0) {
                         for (var i = 0; i < canvasElements.length; i++) {
                             if (canvasElements[i].network) {
-                                window.visNetwork = canvasElements[i].network;
-                                console.log('Successfully attached network to window.visNetwork');
-                                return true;
+                                var network = canvasElements[i].network;
+                                
+                                // Add click handler
+                                network.on('click', function(params) {
+                                    if (params.nodes.length === 1) {
+                                        var nodeId = params.nodes[0];
+                                        console.log('Node clicked:', nodeId);
+                                        
+                                        // Create a hidden form for submission
+                                        var form = document.createElement('form');
+                                        form.method = 'get';
+                                        form.action = window.location.pathname;
+                                        form.style.display = 'none';
+                                        
+                                        // Create action input
+                                        var actionInput = document.createElement('input');
+                                        actionInput.type = 'hidden';
+                                        actionInput.name = 'action';
+                                        actionInput.value = 'center_node';
+                                        form.appendChild(actionInput);
+                                        
+                                        // Create payload input
+                                        var payloadInput = document.createElement('input');
+                                        payloadInput.type = 'hidden';
+                                        payloadInput.name = 'payload';
+                                        payloadInput.value = JSON.stringify({ id: nodeId });
+                                        form.appendChild(payloadInput);
+                                        
+                                        // Add form to document and submit
+                                        document.body.appendChild(form);
+                                        console.log('Submitting form for node:', nodeId);
+                                        form.submit();
+                                    }
+                                });
+                                
+                                console.log('Click handler added successfully');
                             }
                         }
-                        return false;
-                    }
-                    
-                    // First attempt
-                    if (!findAndAttachNetwork()) {
-                        // Retry after a delay
-                        setTimeout(findAndAttachNetwork, 500);
                     }
                 }
-            }, 100);
-        };
+            } catch (e) {
+                console.error('Error setting up click handler:', e);
+            }
+        }, 1000);
         </script>
         '''
         
-        html = f"{pre_body_end}<script>{js_combined}</script>{network_injection}</body>{post_body_end}"
+        html = f"{pre_body_end}{js_handlers}{simple_click_handler}</body>{post_body_end}"
     else:
-        html = f"{html}<script>{js_combined}</script>"
+        html = f"{html}{js_handlers}"
     
     # Render the HTML with the appropriate height - remove unsupported key parameter
     components.html(
@@ -1011,11 +1055,15 @@ try:
     action = st.query_params.get('action', None)
     payload_str = st.query_params.get('payload', None)
     
+    # Debug output for query parameters
+    logger.info(f"Query parameters: action={action}, payload={payload_str}")
+    
     if action and payload_str:
         try:
             payload = json.loads(payload_str)
             # Create a message data structure
             msg_data = {'type': action, 'payload': payload}
+            logger.info(f"Processing message: {msg_data}")
             handle_message(msg_data)
             
             # Save data after handling the message
@@ -1024,18 +1072,35 @@ try:
             # Clear parameters after processing
             st.query_params.pop('action', None)
             st.query_params.pop('payload', None)
+            
+            # Force rerun to ensure the UI updates
+            st.rerun()
         except Exception as e:
             handle_exception(e)
 
     # Node details section for both central and selected nodes
-    selected_node_id = st.session_state.get('selected_node')
+    # Use only the central node approach
     display_node = None
     
-    if selected_node_id is not None:
-        display_node = next((n for n in ideas if n['id'] == selected_node_id), None)
-    elif get_central() is not None:
-        display_node = next((n for n in ideas if n['id'] == get_central()), None)
-
+    if get_central() is not None:
+        central_id = get_central()
+        logger.info(f"Using central node ID: {central_id}")
+        display_node = next((n for n in ideas if n['id'] == central_id), None)
+        logger.info(f"Found node for central ID: {display_node is not None}")
+    
+    # Fallback: If no central node, pick the first node if available
+    if display_node is None and ideas:
+        display_node = ideas[0]
+        selected_node_temp = display_node['id']
+        logger.info(f"No central node, using fallback node ID: {selected_node_temp}")
+        # Set as central node
+        set_central(selected_node_temp)
+    
+    # Debug output for ideas
+    logger.info(f"Total nodes in ideas: {len(ideas)}")
+    if not ideas:
+        logger.warning("No ideas/nodes found in the store")
+    
     # Display color mode legend
     color_mode = get_store().get('settings', {}).get('color_mode', 'urgency')
     col1, col2 = st.columns([3, 1])
@@ -1054,17 +1119,21 @@ try:
             st.rerun()
 
     if display_node:
+        logger.info(f"Displaying node: {display_node['id']} - {display_node['label']}")
+        # Display node with a clean style, matching the center button approach
         st.subheader(f"📌 Selected: {display_node['label']}")
 
         # Display node details
         if display_node.get('tag'):
             st.write(f"**Tag:** {display_node['tag']}")
 
-        st.write(f"**Urgency:** {display_node['urgency']}")
+        st.write(f"**Urgency:** {display_node.get('urgency', 'medium')}")
 
         if display_node.get('description'):
             st.markdown("**Description:**")
             st.markdown(display_node['description'])
+        else:
+            st.markdown("**Description:** *No description available*")
 
         # Display children
         children = [n for n in ideas if n.get('parent') == display_node['id']]
@@ -1072,6 +1141,12 @@ try:
             st.markdown("**Connected Ideas:**")
             for child in children:
                 st.markdown(f"- {child['label']} ({child.get('edge_type', 'default')} connection)")
+        else:
+            st.markdown("**Connected Ideas:** *None*")
+    else:
+        # If we still don't have a node to display, show a message
+        logger.warning("No node available to display")
+        st.warning("No node selected. Click on a node in the canvas to view its details.")
 
 except Exception as e:
     logger.error(f"Unhandled exception: {str(e)}")

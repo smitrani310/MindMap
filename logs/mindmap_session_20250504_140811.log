@@ -1,0 +1,171 @@
+2025-05-04 14:08:11,341 - __main__ - INFO - Starting new session. Logging to: logs\mindmap_session_20250504_140811.log
+2025-05-04 14:08:11,465 - __main__ - INFO - Creating nodes with central node ID: 0
+2025-05-04 14:08:11,465 - __main__ - DEBUG - Coloring node 0 with tag='personal', urgency='low', mode='tag'
+2025-05-04 14:08:11,465 - src.utils - DEBUG - Using custom color for tag 'personal': #9C27B0
+2025-05-04 14:08:11,465 - __main__ - DEBUG - Node 0: Using tag color #9C27B0 for tag 'personal'
+2025-05-04 14:08:11,465 - __main__ - INFO - Applying special highlighting to central node 0
+2025-05-04 14:08:11,467 - __main__ - DEBUG - Coloring node 1 with tag='research', urgency='medium', mode='tag'
+2025-05-04 14:08:11,467 - src.utils - DEBUG - Using custom color for tag 'research': #9441ea
+2025-05-04 14:08:11,467 - __main__ - DEBUG - Node 1: Using tag color #9441ea for tag 'research'
+2025-05-04 14:08:11,467 - __main__ - DEBUG - Coloring node 2 with tag='work', urgency='medium', mode='tag'
+2025-05-04 14:08:11,467 - src.utils - DEBUG - Using custom color for tag 'work': #2196F3
+2025-05-04 14:08:11,467 - __main__ - DEBUG - Node 2: Using tag color #2196F3 for tag 'work'
+2025-05-04 14:08:11,468 - __main__ - DEBUG - Coloring node 4 with tag='work', urgency='medium', mode='tag'
+2025-05-04 14:08:11,468 - src.utils - DEBUG - Using custom color for tag 'work': #2196F3
+2025-05-04 14:08:11,468 - __main__ - DEBUG - Node 4: Using tag color #2196F3 for tag 'work'
+2025-05-04 14:08:11,468 - __main__ - DEBUG - Coloring node 5 with tag='personal', urgency='low', mode='tag'
+2025-05-04 14:08:11,468 - src.utils - DEBUG - Using custom color for tag 'personal': #9C27B0
+2025-05-04 14:08:11,468 - __main__ - DEBUG - Node 5: Using tag color #9C27B0 for tag 'personal'
+2025-05-04 14:08:11,468 - __main__ - DEBUG - Coloring node 6 with tag='work', urgency='medium', mode='tag'
+2025-05-04 14:08:11,468 - src.utils - DEBUG - Using custom color for tag 'work': #2196F3
+2025-05-04 14:08:11,468 - __main__ - DEBUG - Node 6: Using tag color #2196F3 for tag 'work'
+2025-05-04 14:08:11,469 - __main__ - DEBUG - Coloring node 7 with tag='work', urgency='high', mode='tag'
+2025-05-04 14:08:11,469 - src.utils - DEBUG - Using custom color for tag 'work': #2196F3
+2025-05-04 14:08:11,469 - __main__ - DEBUG - Node 7: Using tag color #2196F3 for tag 'work'
+2025-05-04 14:08:11,469 - __main__ - DEBUG - Coloring node 8 with tag='work', urgency='high', mode='tag'
+2025-05-04 14:08:11,469 - src.utils - DEBUG - Using custom color for tag 'work': #2196F3
+2025-05-04 14:08:11,469 - __main__ - DEBUG - Node 8: Using tag color #2196F3 for tag 'work'
+2025-05-04 14:08:11,469 - __main__ - DEBUG - Coloring node 9 with tag='work', urgency='high', mode='tag'
+2025-05-04 14:08:11,469 - src.utils - DEBUG - Using custom color for tag 'work': #2196F3
+2025-05-04 14:08:11,470 - __main__ - DEBUG - Node 9: Using tag color #2196F3 for tag 'work'
+2025-05-04 14:08:11,470 - __main__ - DEBUG - Coloring node 10 with tag='work', urgency='high', mode='tag'
+2025-05-04 14:08:11,470 - src.utils - DEBUG - Using custom color for tag 'work': #2196F3
+2025-05-04 14:08:11,470 - __main__ - DEBUG - Node 10: Using tag color #2196F3 for tag 'work'
+2025-05-04 14:08:11,470 - __main__ - DEBUG - Coloring node 11 with tag='research', urgency='medium', mode='tag'
+2025-05-04 14:08:11,470 - src.utils - DEBUG - Using custom color for tag 'research': #9441ea
+2025-05-04 14:08:11,470 - __main__ - DEBUG - Node 11: Using tag color #9441ea for tag 'research'
+2025-05-04 14:08:11,470 - __main__ - DEBUG - Coloring node 12 with tag='research', urgency='medium', mode='tag'
+2025-05-04 14:08:11,471 - src.utils - DEBUG - Using custom color for tag 'research': #9441ea
+2025-05-04 14:08:11,471 - __main__ - DEBUG - Node 12: Using tag color #9441ea for tag 'research'
+2025-05-04 14:08:11,471 - __main__ - DEBUG - Coloring node 13 with tag='project', urgency='medium', mode='tag'
+2025-05-04 14:08:11,471 - src.utils - DEBUG - Using custom color for tag 'project': #25af55
+2025-05-04 14:08:11,471 - __main__ - DEBUG - Node 13: Using tag color #25af55 for tag 'project'
+2025-05-04 14:08:11,471 - __main__ - DEBUG - Coloring node 14 with tag='project', urgency='medium', mode='tag'
+2025-05-04 14:08:11,471 - src.utils - DEBUG - Using custom color for tag 'project': #25af55
+2025-05-04 14:08:11,471 - __main__ - DEBUG - Node 14: Using tag color #25af55 for tag 'project'
+2025-05-04 14:08:11,471 - __main__ - DEBUG - Coloring node 15 with tag='project', urgency='medium', mode='tag'
+2025-05-04 14:08:11,472 - src.utils - DEBUG - Using custom color for tag 'project': #25af55
+2025-05-04 14:08:11,472 - __main__ - DEBUG - Node 15: Using tag color #25af55 for tag 'project'
+2025-05-04 14:08:11,472 - __main__ - DEBUG - Coloring node 16 with tag='project', urgency='medium', mode='tag'
+2025-05-04 14:08:11,472 - src.utils - DEBUG - Using custom color for tag 'project': #25af55
+2025-05-04 14:08:11,472 - __main__ - DEBUG - Node 16: Using tag color #25af55 for tag 'project'
+2025-05-04 14:08:11,472 - __main__ - DEBUG - Coloring node 17 with tag='project', urgency='medium', mode='tag'
+2025-05-04 14:08:11,472 - src.utils - DEBUG - Using custom color for tag 'project': #25af55
+2025-05-04 14:08:11,472 - __main__ - DEBUG - Node 17: Using tag color #25af55 for tag 'project'
+2025-05-04 14:08:11,473 - __main__ - DEBUG - Coloring node 18 with tag='project', urgency='medium', mode='tag'
+2025-05-04 14:08:11,473 - src.utils - DEBUG - Using custom color for tag 'project': #25af55
+2025-05-04 14:08:11,473 - __main__ - DEBUG - Node 18: Using tag color #25af55 for tag 'project'
+2025-05-04 14:08:11,473 - __main__ - DEBUG - Coloring node 19 with tag='project', urgency='medium', mode='tag'
+2025-05-04 14:08:11,473 - src.utils - DEBUG - Using custom color for tag 'project': #25af55
+2025-05-04 14:08:11,473 - __main__ - DEBUG - Node 19: Using tag color #25af55 for tag 'project'
+2025-05-04 14:08:11,473 - __main__ - DEBUG - Coloring node 20 with tag='project', urgency='medium', mode='tag'
+2025-05-04 14:08:11,473 - src.utils - DEBUG - Using custom color for tag 'project': #25af55
+2025-05-04 14:08:11,474 - __main__ - DEBUG - Node 20: Using tag color #25af55 for tag 'project'
+2025-05-04 14:08:11,474 - __main__ - DEBUG - Coloring node 21 with tag='project', urgency='medium', mode='tag'
+2025-05-04 14:08:11,474 - src.utils - DEBUG - Using custom color for tag 'project': #25af55
+2025-05-04 14:08:11,474 - __main__ - DEBUG - Node 21: Using tag color #25af55 for tag 'project'
+2025-05-04 14:08:11,474 - __main__ - DEBUG - Coloring node 22 with tag='project', urgency='medium', mode='tag'
+2025-05-04 14:08:11,474 - src.utils - DEBUG - Using custom color for tag 'project': #25af55
+2025-05-04 14:08:11,474 - __main__ - DEBUG - Node 22: Using tag color #25af55 for tag 'project'
+2025-05-04 14:08:11,474 - __main__ - DEBUG - Coloring node 23 with tag='research', urgency='medium', mode='tag'
+2025-05-04 14:08:11,474 - src.utils - DEBUG - Using custom color for tag 'research': #9441ea
+2025-05-04 14:08:11,474 - __main__ - DEBUG - Node 23: Using tag color #9441ea for tag 'research'
+2025-05-04 14:08:11,474 - __main__ - DEBUG - Coloring node 24 with tag='research', urgency='medium', mode='tag'
+2025-05-04 14:08:11,475 - src.utils - DEBUG - Using custom color for tag 'research': #9441ea
+2025-05-04 14:08:11,475 - __main__ - DEBUG - Node 24: Using tag color #9441ea for tag 'research'
+2025-05-04 14:08:11,475 - __main__ - DEBUG - Coloring node 25 with tag='research', urgency='medium', mode='tag'
+2025-05-04 14:08:11,475 - src.utils - DEBUG - Using custom color for tag 'research': #9441ea
+2025-05-04 14:08:11,475 - __main__ - DEBUG - Node 25: Using tag color #9441ea for tag 'research'
+2025-05-04 14:08:11,475 - __main__ - DEBUG - Coloring node 26 with tag='research', urgency='medium', mode='tag'
+2025-05-04 14:08:11,475 - src.utils - DEBUG - Using custom color for tag 'research': #9441ea
+2025-05-04 14:08:11,475 - __main__ - DEBUG - Node 26: Using tag color #9441ea for tag 'research'
+2025-05-04 14:08:11,475 - __main__ - DEBUG - Coloring node 27 with tag='research', urgency='medium', mode='tag'
+2025-05-04 14:08:11,475 - src.utils - DEBUG - Using custom color for tag 'research': #9441ea
+2025-05-04 14:08:11,475 - __main__ - DEBUG - Node 27: Using tag color #9441ea for tag 'research'
+2025-05-04 14:08:11,475 - __main__ - DEBUG - Coloring node 29 with tag='task', urgency='medium', mode='tag'
+2025-05-04 14:08:11,476 - src.utils - DEBUG - Using custom color for tag 'task': #FF9800
+2025-05-04 14:08:11,476 - __main__ - DEBUG - Node 29: Using tag color #FF9800 for tag 'task'
+2025-05-04 14:08:11,476 - __main__ - DEBUG - Coloring node 30 with tag='personal', urgency='medium', mode='tag'
+2025-05-04 14:08:11,476 - src.utils - DEBUG - Using custom color for tag 'personal': #9C27B0
+2025-05-04 14:08:11,476 - __main__ - DEBUG - Node 30: Using tag color #9C27B0 for tag 'personal'
+2025-05-04 14:08:11,476 - __main__ - DEBUG - Coloring node 31 with tag='research', urgency='medium', mode='tag'
+2025-05-04 14:08:11,476 - src.utils - DEBUG - Using custom color for tag 'research': #9441ea
+2025-05-04 14:08:11,476 - __main__ - DEBUG - Node 31: Using tag color #9441ea for tag 'research'
+2025-05-04 14:08:11,476 - __main__ - DEBUG - Coloring node 32 with tag='work', urgency='medium', mode='tag'
+2025-05-04 14:08:11,476 - src.utils - DEBUG - Using custom color for tag 'work': #2196F3
+2025-05-04 14:08:11,476 - __main__ - DEBUG - Node 32: Using tag color #2196F3 for tag 'work'
+2025-05-04 14:08:11,496 - __main__ - INFO - Query parameters: action=None, payload=None
+2025-05-04 14:08:11,497 - __main__ - INFO - Using central node ID: 0
+2025-05-04 14:08:11,498 - __main__ - INFO - Found node for central ID: True
+2025-05-04 14:08:11,498 - __main__ - INFO - Total nodes in ideas: 31
+2025-05-04 14:08:11,583 - src.state - INFO - Data saved successfully
+2025-05-04 14:08:11,622 - __main__ - INFO - Starting new session. Logging to: logs\mindmap_session_20250504_140811.log
+2025-05-04 14:08:11,782 - __main__ - INFO - Creating nodes with central node ID: 0
+2025-05-04 14:08:11,782 - __main__ - DEBUG - Coloring node 0 with tag='personal', urgency='low', mode='urgency'
+2025-05-04 14:08:11,783 - __main__ - DEBUG - Node 0: Using urgency color #4CAF50 for 'low'
+2025-05-04 14:08:11,783 - __main__ - INFO - Applying special highlighting to central node 0
+2025-05-04 14:08:11,784 - __main__ - DEBUG - Coloring node 1 with tag='research', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,784 - __main__ - DEBUG - Node 1: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,784 - __main__ - DEBUG - Coloring node 2 with tag='work', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,784 - __main__ - DEBUG - Node 2: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,784 - __main__ - DEBUG - Coloring node 4 with tag='work', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,785 - __main__ - DEBUG - Node 4: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,785 - __main__ - DEBUG - Coloring node 5 with tag='personal', urgency='low', mode='urgency'
+2025-05-04 14:08:11,785 - __main__ - DEBUG - Node 5: Using urgency color #4CAF50 for 'low'
+2025-05-04 14:08:11,785 - __main__ - DEBUG - Coloring node 6 with tag='work', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,786 - __main__ - DEBUG - Node 6: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,786 - __main__ - DEBUG - Coloring node 7 with tag='work', urgency='high', mode='urgency'
+2025-05-04 14:08:11,786 - __main__ - DEBUG - Node 7: Using urgency color #FF5252 for 'high'
+2025-05-04 14:08:11,786 - __main__ - DEBUG - Coloring node 8 with tag='work', urgency='high', mode='urgency'
+2025-05-04 14:08:11,786 - __main__ - DEBUG - Node 8: Using urgency color #FF5252 for 'high'
+2025-05-04 14:08:11,787 - __main__ - DEBUG - Coloring node 9 with tag='work', urgency='high', mode='urgency'
+2025-05-04 14:08:11,787 - __main__ - DEBUG - Node 9: Using urgency color #FF5252 for 'high'
+2025-05-04 14:08:11,787 - __main__ - DEBUG - Coloring node 10 with tag='work', urgency='high', mode='urgency'
+2025-05-04 14:08:11,787 - __main__ - DEBUG - Node 10: Using urgency color #FF5252 for 'high'
+2025-05-04 14:08:11,787 - __main__ - DEBUG - Coloring node 11 with tag='research', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,787 - __main__ - DEBUG - Node 11: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,788 - __main__ - DEBUG - Coloring node 12 with tag='research', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,788 - __main__ - DEBUG - Node 12: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,789 - __main__ - DEBUG - Coloring node 13 with tag='project', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,789 - __main__ - DEBUG - Node 13: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,789 - __main__ - DEBUG - Coloring node 14 with tag='project', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,790 - __main__ - DEBUG - Node 14: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,790 - __main__ - DEBUG - Coloring node 15 with tag='project', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,790 - __main__ - DEBUG - Node 15: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,790 - __main__ - DEBUG - Coloring node 16 with tag='project', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,790 - __main__ - DEBUG - Node 16: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,790 - __main__ - DEBUG - Coloring node 17 with tag='project', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,790 - __main__ - DEBUG - Node 17: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,791 - __main__ - DEBUG - Coloring node 18 with tag='project', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,791 - __main__ - DEBUG - Node 18: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,791 - __main__ - DEBUG - Coloring node 19 with tag='project', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,791 - __main__ - DEBUG - Node 19: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,791 - __main__ - DEBUG - Coloring node 20 with tag='project', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,791 - __main__ - DEBUG - Node 20: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,791 - __main__ - DEBUG - Coloring node 21 with tag='project', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,791 - __main__ - DEBUG - Node 21: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,791 - __main__ - DEBUG - Coloring node 22 with tag='project', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,792 - __main__ - DEBUG - Node 22: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,792 - __main__ - DEBUG - Coloring node 23 with tag='research', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,792 - __main__ - DEBUG - Node 23: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,792 - __main__ - DEBUG - Coloring node 24 with tag='research', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,792 - __main__ - DEBUG - Node 24: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,792 - __main__ - DEBUG - Coloring node 25 with tag='research', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,792 - __main__ - DEBUG - Node 25: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,792 - __main__ - DEBUG - Coloring node 26 with tag='research', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,792 - __main__ - DEBUG - Node 26: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,792 - __main__ - DEBUG - Coloring node 27 with tag='research', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,792 - __main__ - DEBUG - Node 27: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,793 - __main__ - DEBUG - Coloring node 29 with tag='task', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,793 - __main__ - DEBUG - Node 29: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,793 - __main__ - DEBUG - Coloring node 30 with tag='personal', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,793 - __main__ - DEBUG - Node 30: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,793 - __main__ - DEBUG - Coloring node 31 with tag='research', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,793 - __main__ - DEBUG - Node 31: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,793 - __main__ - DEBUG - Coloring node 32 with tag='work', urgency='medium', mode='urgency'
+2025-05-04 14:08:11,793 - __main__ - DEBUG - Node 32: Using urgency color #FFC107 for 'medium'
+2025-05-04 14:08:11,815 - __main__ - INFO - Query parameters: action=None, payload=None
+2025-05-04 14:08:11,817 - __main__ - INFO - Using central node ID: 0
+2025-05-04 14:08:11,817 - __main__ - INFO - Found node for central ID: True
+2025-05-04 14:08:11,818 - __main__ - INFO - Total nodes in ideas: 31
+2025-05-04 14:08:11,820 - __main__ - INFO - Displaying node: 0 - ME
