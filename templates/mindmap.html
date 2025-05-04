@@ -1,0 +1,16 @@
+function sendMessageToParent(action, payload) {
+    console.log(`Sending message: ${action}`);
+    
+    // Try postMessage first
+    try {
+        const message = {
+            action: action,
+            payload: payload,
+            timestamp: Date.now()
+        };
+        window.parent.postMessage(message, '*');
+        console.log('Message sent via postMessage');
+    } catch (e) {
+        console.error('postMessage failed:', e);
+    }
+} 

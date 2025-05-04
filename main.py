@@ -157,6 +157,64 @@ if 'store' not in st.session_state:
 try:
     st.set_page_config(page_title="Enhanced Mind Map", layout="wide")
 
+    # Add a script to restore messages from browser cookies if needed
+    message_recovery_js = """
+    <script>
+    // Script to help with message recovery on page load
+    console.log('Message recovery script loaded');
+    
+    function injectMessageToSessionState() {
+        // Check for URL parameters first
+        const urlParams = new URLSearchParams(window.location.search);
+        const action = urlParams.get('action');
+        const payload = urlParams.get('payload');
+        
+        if (action && payload) {
+            console.log('Found message in URL parameters, will be recorded');
+            return;
+        }
+        
+        // Look for message in cookie
+        try {
+            const cookies = document.cookie.split(';');
+            for (let cookie of cookies) {
+                cookie = cookie.trim();
+                if (cookie.startsWith('last_message=')) {
+                    const msgStr = decodeURIComponent(cookie.substring('last_message='.length));
+                    const message = JSON.parse(msgStr);
+                    console.log('Found message in cookie:', message);
+                    
+                    // Add to URL parameters and refresh
+                    const params = new URLSearchParams();
+                    params.set('action', message.action);
+                    params.set('payload', message.payload);
+                    const newUrl = window.location.pathname + '?' + params.toString();
+                    
+                    console.log('Redirecting to inject message:', newUrl);
+                    // Use timeout to ensure the page has time to initialize
+                    setTimeout(function() {
+                        window.location.href = newUrl;
+                    }, 100);
+                    
+                    return;
+                }
+            }
+        } catch (e) {
+            console.error('Error recovering message from cookie:', e);
+        }
+    }
+    
+    // Run recovery on page load if there's no action parameter
+    if (!window.location.search.includes('action=')) {
+        console.log('No action in URL, checking for stored messages');
+        setTimeout(injectMessageToSessionState, 500);
+    }
+    </script>
+    """
+    
+    # Insert the message recovery script
+    st.components.v1.html(message_recovery_js, height=0)
+
     # Apply theme to page
     current_theme = get_current_theme()
     if current_theme == 'dark':
@@ -852,6 +910,7 @@ try:
     # Add canvas expansion toggle
     canvas_expanded = st.session_state.get('canvas_expanded', False)
     expand_button = st.button("🔍 Expand Canvas" if not canvas_expanded else "🔍 Collapse Canvas")
+    
     if expand_button:
         # Toggle canvas expansion
         canvas_expanded = not canvas_expanded
@@ -1050,35 +1109,120 @@ try:
     // Communication helper for sending messages to Streamlit
     function simpleSendMessage(action, payload) {
         try {
-            debugLog('Sending message: ' + action);
+            debugLog(`Sending message: ${action}`);
             
-            // Method 1: Try direct navigation with top window
+            // Package the message with source identifier
+            var message = {
+                source: 'network_canvas',
+                action: action,
+                payload: payload,
+                timestamp: Date.now()
+            };
+            
+            // Track if any communication method succeeds
+            var communicationSucceeded = false;
+            
+            // Method 1: Send via postMessage (main method)
             try {
-                debugLog('Trying direct top window navigation for: ' + action);
-                var params = new URLSearchParams();
-                params.set('action', action);
-                params.set('payload', JSON.stringify(payload));
-                var fullUrl = window.location.pathname + '?' + params.toString();
+                // Try multiple targets (sometimes frames can be nested)
+                const targets = [window.parent, window.top, window];
                 
-                // Use parent location to navigate
-                window.parent.location.href = fullUrl;
+                for (let i = 0; i < targets.length; i++) {
+                    try {
+                        const target = targets[i];
+                        if (target && target !== window) {
+                            target.postMessage(message, '*');
+                            debugLog(`Message sent via postMessage to target ${i}`);
+                            communicationSucceeded = true;
+                            break;
+                        }
+                    } catch (e) {
+                        debugLog(`Failed to send to target ${i}: ${e.message}`);
+                    }
+                }
                 
-                debugLog('Navigated parent window to: ' + fullUrl);
-                return; // Exit early if successful
+                if (!communicationSucceeded) {
+                    // Try standard window.parent as last resort
+                    window.parent.postMessage(message, '*');
+                    debugLog('Message sent via standard postMessage');
+                    communicationSucceeded = true;
+                }
             } catch(e) {
-                debugLog('Parent window navigation failed: ' + e.message);
+                debugLog('All postMessage attempts failed: ' + e.message);
             }
             
-            // If parent navigation fails, try postMessage
-            try {
-                window.parent.postMessage({
-                    source: 'network_canvas',
-                    action: action,
-                    payload: payload
-                }, '*');
-                debugLog('Message sent via postMessage');
-            } catch(e) {
-                debugLog('ERROR: All methods failed - ' + e.message);
+            // Method 2: Direct URL parameter modification if postMessage failed
+            if (!communicationSucceeded) {
+                try {
+                    debugLog('Attempting URL parameter method');
+                    var params = new URLSearchParams(window.location.search);
+                    params.set('action', action);
+                    
+                    // Make sure to preserve all payload fields for coordinate calculations
+                    if (payload) {
+                        // Include canvas dimensions with click coordinates
+                        if (payload.x !== undefined && payload.y !== undefined) {
+                            var networkDiv = document.getElementById('mynetwork');
+                            if (networkDiv) {
+                                var rect = networkDiv.getBoundingClientRect();
+                                payload.canvasWidth = rect.width;
+                                payload.canvasHeight = rect.height;
+                                debugLog(`Added canvas dimensions: ${rect.width}x${rect.height}`);
+                            }
+                        }
+                    }
+                    
+                    params.set('payload', JSON.stringify(payload));
+                    var newUrl = window.top.location.pathname + '?' + params.toString();
+                    debugLog('Navigating to: ' + newUrl);
+                    window.top.location.href = newUrl;
+                    communicationSucceeded = true;
+                    return; // Success, so return early
+                } catch(e) {
+                    debugLog('URL parameter method failed: ' + e.message);
+                }
+            }
+            
+            // Method 3: Try localStorage if available and previous methods failed
+            if (!communicationSucceeded && window.localStorage) {
+                try {
+                    debugLog('Attempting localStorage method');
+                    localStorage.setItem('mindmap_message', JSON.stringify(message));
+                    localStorage.setItem('mindmap_trigger_reload', Date.now().toString());
+                    debugLog('Message sent via localStorage');
+                    communicationSucceeded = true;
+                } catch(e) {
+                    debugLog('localStorage method failed: ' + e.message);
+                }
+            }
+            
+            // Method 4: Form submission as last resort
+            if (!communicationSucceeded) {
+                try {
+                    debugLog('Attempting form submission method');
+                    var form = document.getElementById('hidden-message-form');
+                    var actionInput = document.getElementById('hidden-action-input');
+                    var payloadInput = document.getElementById('hidden-payload-input');
+                    
+                    if (form && actionInput && payloadInput) {
+                        actionInput.value = action;
+                        payloadInput.value = JSON.stringify(payload);
+                        debugLog('Submitting hidden form');
+                        form.submit();
+                        communicationSucceeded = true;
+                    } else {
+                        debugLog('Hidden form elements not found');
+                    }
+                } catch(e) {
+                    debugLog('Form submission method failed: ' + e.message);
+                }
+            }
+            
+            // Log final communication status
+            if (communicationSucceeded) {
+                debugLog('Successfully sent message using at least one method');
+            } else {
+                debugLog('CRITICAL: All communication methods failed');
             }
         } catch(e) {
             debugLog('CRITICAL ERROR in simpleSendMessage: ' + e.message);
@@ -1183,207 +1327,293 @@ try:
     action = st.query_params.get('action', None)
     payload_str = st.query_params.get('payload', None)
     
+    # Initialize message debug in session state if not present
+    if 'message_debug' not in st.session_state:
+        st.session_state.message_debug = []
+    
+    # Add current message to debug log immediately if present
+    if action and payload_str:
+        # Get current time for the message
+        current_time = datetime.datetime.now().strftime("%H:%M:%S")
+        
+        # Create the message record
+        new_message = {
+            'action': action,
+            'payload': payload_str,
+            'time': current_time
+        }
+        
+        # Add to the log
+        st.session_state.message_debug.append(new_message)
+        
+        # Limit log size
+        if len(st.session_state.message_debug) > 50:
+            st.session_state.message_debug = st.session_state.message_debug[-50:]
+        
+        # Log to console/file
+        logger.info(f"Received message: action={action}, payload={payload_str}")
+    
+    # Debug expander to show message flow
+    with st.expander("Debug Message Log", expanded=False):
+        st.write("This section shows the messages received from the canvas.")
+        
+        # Add columns for current parameters
+        col1, col2 = st.columns(2)
+        col1.write("**Current Action:**")
+        col1.code(action or "None")
+        
+        col2.write("**Current Payload:**")
+        col2.code(payload_str or "None")
+        
+        # Show history of messages
+        st.write("**Message History:**")
+        if st.session_state.message_debug:
+            for idx, msg in enumerate(reversed(st.session_state.message_debug[-10:])):
+                with st.container():
+                    st.markdown(f"**Message {idx+1}** - {msg.get('time', 'unknown time')}")
+                    message_cols = st.columns(2)
+                    message_cols[0].write("Action:")
+                    message_cols[0].code(msg.get('action', 'None'))
+                    message_cols[1].write("Payload:")
+                    message_cols[1].code(msg.get('payload', 'None'))
+        else:
+            st.info("No messages received yet.")
+            # Add a check for recent cookie messages button
+            if st.button("Check for Recent Messages", key="check_recent_msgs"):
+                st.info("Looking for messages in browser storage...")
+                st.rerun()
+        
+        # Clear log button
+        if st.button("Clear Log"):
+            st.session_state.message_debug = []
+            st.rerun()
+    
+    # Add cookie storage script for messages
+    cookie_message_storage = """
+    <script>
+    // Script to store the most recent message in cookies as backup
+    (function() {
+        // Function to store message in cookie
+        function setMessageCookie(message) {
+            try {
+                const msgStr = JSON.stringify(message);
+                document.cookie = `last_message=${encodeURIComponent(msgStr)};path=/;max-age=3600`;
+                console.log('Message stored in cookie');
+            } catch (e) {
+                console.error('Error storing message in cookie:', e);
+            }
+        }
+        
+        // Function to read message from cookie
+        function getMessageCookie() {
+            try {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    cookie = cookie.trim();
+                    if (cookie.startsWith('last_message=')) {
+                        const msgStr = decodeURIComponent(cookie.substring('last_message='.length));
+                        return JSON.parse(msgStr);
+                    }
+                }
+            } catch (e) {
+                console.error('Error reading message from cookie:', e);
+            }
+            return null;
+        }
+        
+        // Store current message if in URL parameters
+        window.addEventListener('load', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const action = urlParams.get('action');
+            const payload = urlParams.get('payload');
+            
+            if (action && payload) {
+                const message = {
+                    action: action,
+                    payload: payload,
+                    time: new Date().toLocaleTimeString()
+                };
+                setMessageCookie(message);
+                console.log('Stored message in cookie:', message);
+            }
+            
+            // Check if we should inject message from cookie
+            const debugLog = document.querySelector('[data-testid="stExpander"] [data-testid="stMarkdownContainer"]');
+            if (debugLog && debugLog.textContent.includes('No messages received yet')) {
+                console.log('No messages found in debug log, checking cookie...');
+                const lastMessage = getMessageCookie();
+                if (lastMessage) {
+                    console.log('Found message in cookie:', lastMessage);
+                    // Find the Check button and click it
+                    setTimeout(function() {
+                        const buttons = document.querySelectorAll('button');
+                        for (let button of buttons) {
+                            if (button.textContent.includes('Check for Recent Messages')) {
+                                console.log('Clicking check button to restore messages');
+                                button.click();
+                                break;
+                            }
+                        }
+                    }, 500);
+                }
+            }
+        });
+    })();
+    </script>
+    """
+    
+    # Add the cookie message storage script
+    st.components.v1.html(cookie_message_storage, height=0)
+
     if action:
-        logger.info(f"Query parameters received: action={action}, payload={payload_str}")
         try:
             # Parse the payload
             if payload_str:
                 payload = json.loads(payload_str)
-            else:
-                payload = {}
-            
-            # Create message data structure
-            message = {
-                'type': action,
-                'payload': payload
-            }
-            logger.info(f"Processing message: {message}")
-            
-            # Log the current state before processing
-            logger.debug(f"Current state before processing: {len(get_ideas())}")
-            
-            # Handle JavaScript logs
-            if action == 'log':
-                log_data = payload
-                log_level = log_data.get('level', 'info').lower()
-                log_message = log_data.get('message', '')
-                log_data = log_data.get('data')
                 
-                if log_level == 'error':
-                    logger.error(f"JS: {log_message}", extra={'js_data': log_data})
-                elif log_level == 'warning':
-                    logger.warning(f"JS: {log_message}", extra={'js_data': log_data})
-                elif log_level == 'debug':
-                    logger.debug(f"JS: {log_message}", extra={'js_data': log_data})
+                # Log successful payload parsing
+                logger.debug(f"Payload parsed successfully: {payload}")
+                
+                # Handle different action types
+                if action.startswith('canvas_'):
+                    # Handle canvas coordinate-based messages
+                    logger.info(f"Processing canvas interaction: {action}")
+                    
+                    # For click/dblclick actions, find the nearest node
+                    if action in ['canvas_click', 'canvas_dblclick', 'canvas_contextmenu']:
+                        if 'x' in payload and 'y' in payload:
+                            # Process the coordinates
+                            click_x = payload.get('x', 0)
+                            click_y = payload.get('y', 0)
+                            canvas_width = payload.get('canvasWidth', 800)
+                            canvas_height = payload.get('canvasHeight', 600)
+                            
+                            # Store the coordinates in session state
+                            st.session_state.last_click_coords = {
+                                'x': click_x,
+                                'y': click_y,
+                                'canvasWidth': canvas_width,
+                                'canvasHeight': canvas_height,
+                                'timestamp': payload.get('timestamp', datetime.datetime.now().timestamp() * 1000)
+                            }
+                            
+                            logger.info(f"Canvas {action} at coordinates: ({click_x}, {click_y})")
+                            
+                            # Get all nodes with stored positions
+                            ideas = get_ideas()
+                            nodes_with_pos = [n for n in ideas if n.get('x') is not None and n.get('y') is not None]
+                            
+                            # Debug logging
+                            logger.info(f"Total nodes: {len(ideas)}, Nodes with positions: {len(nodes_with_pos)}")
+                            
+                            canvas_action_successful = False
+                            
+                            if nodes_with_pos:
+                                # Find the closest node by Euclidean distance
+                                closest_node = None
+                                min_distance = float('inf')
+                                
+                                # Log position of each node for debugging
+                                logger.debug("Node positions:")
+                                for node in nodes_with_pos:
+                                    node_x = node.get('x', 0)
+                                    node_y = node.get('y', 0)
+                                    logger.debug(f"Node {node['id']} ({node['label']}): raw position ({node_x}, {node_y})")
+                                    
+                                    # Scale the coordinates to match the canvas
+                                    node_canvas_x = (node_x + canvas_width/2)
+                                    node_canvas_y = (node_y + canvas_height/2)
+                                    
+                                    logger.debug(f"Node {node['id']} canvas position: ({node_canvas_x}, {node_canvas_y})")
+                                    
+                                    # Calculate Euclidean distance
+                                    distance = ((node_canvas_x - click_x) ** 2 + (node_canvas_y - click_y) ** 2) ** 0.5
+                                    
+                                    logger.debug(f"Node {node['id']} distance from click: {distance:.2f}")
+                                    
+                                    if distance < min_distance:
+                                        min_distance = distance
+                                        closest_node = node
+                                
+                                # Use a threshold based on the node size and canvas dimensions
+                                base_threshold = min(canvas_width, canvas_height) * 0.08  # 8% of the smallest dimension
+                                node_size = closest_node.get('size', 20) if closest_node else 20
+                                click_threshold = base_threshold + node_size
+                                
+                                if closest_node:
+                                    logger.info(f"Closest node: {closest_node['id']} ({closest_node['label']}) at distance {min_distance:.2f}, threshold: {click_threshold:.2f}")
+                                
+                                if closest_node and min_distance < click_threshold:
+                                    node_id = closest_node['id']
+                                    logger.info(f"Node {node_id} is within threshold - processing {action}")
+                                    
+                                    # Handle different actions
+                                    if action == 'canvas_click':
+                                        # Regular click - select and center the node
+                                        st.session_state.selected_node = node_id
+                                        st.session_state.show_node_details = True
+                                        set_central(node_id)
+                                        save_data(get_store())
+                                        logger.info(f"Selected and centered node {node_id}")
+                                        canvas_action_successful = True
+                                    
+                                    elif action == 'canvas_dblclick':
+                                        # Double-click - edit the node
+                                        st.session_state['edit_node'] = node_id
+                                        logger.info(f"Opening edit modal for node {node_id}")
+                                        canvas_action_successful = True
+                                    
+                                    elif action == 'canvas_contextmenu':
+                                        # Right-click - delete the node (and its descendants)
+                                        logger.info(f"Deleting node {node_id}")
+                                        
+                                        # Save state before deletion
+                                        save_state_to_history()
+                                        
+                                        # Remove node and its descendants
+                                        to_remove = set()
+                                        
+                                        def collect_descendants(nid):
+                                            to_remove.add(nid)
+                                            for child in [n for n in ideas if n.get('parent') == nid]:
+                                                collect_descendants(child['id'])
+                                        
+                                        collect_descendants(node_id)
+                                        set_ideas([n for n in ideas if n['id'] not in to_remove])
+                                        
+                                        # Update central node if needed
+                                        if get_central() in to_remove:
+                                            new_central = next((n['id'] for n in ideas if n['id'] not in to_remove), None)
+                                            set_central(new_central)
+                                        
+                                        save_data(get_store())
+                                        logger.info(f"Deleted node {node_id} and {len(to_remove)-1} descendants")
+                                        canvas_action_successful = True
+                                else:
+                                    if closest_node:
+                                        logger.warning(f"No node found near click coordinates (closest: {closest_node['label']} at distance: {min_distance:.2f}, threshold: {click_threshold:.2f})")
+                                    else:
+                                        logger.warning(f"No nodes found near click coordinates")
+                            
+                            # Show warning message if action failed
+                            if not canvas_action_successful and action != 'canvas_click':
+                                logger.error(f"Canvas action {action} failed at coordinates ({click_x:.1f}, {click_y:.1f})")
+                    
+                    # Store message info in session state to confirm processing 
+                    st.session_state.last_processed_message = {
+                        'action': action,
+                        'payload': payload,
+                        'time': current_time
+                    }
+                    
+                    # Force a rerun to update the UI after processing
+                    st.rerun()
                 else:
-                    logger.info(f"JS: {log_message}", extra={'js_data': log_data})
-
-            # Handle canvas click, double-click, and right-click events
-            elif action in ['canvas_click', 'canvas_dblclick', 'canvas_contextmenu']:
-                # Extract coordinates and canvas dimensions
-                click_x = payload.get('x', 0)
-                click_y = payload.get('y', 0)
-                canvas_width = payload.get('canvasWidth', 800)
-                canvas_height = payload.get('canvasHeight', 600)
-                
-                logger.info(f"Canvas {action} at coordinates: ({click_x}, {click_y})")
-                
-                # Get all nodes with stored positions
-                ideas = get_ideas()
-                nodes_with_pos = [n for n in ideas if n.get('x') is not None and n.get('y') is not None]
-                
-                canvas_action_successful = False
-                
-                if nodes_with_pos:
-                    # Find the closest node by Euclidean distance
-                    closest_node = None
-                    min_distance = float('inf')
-                    
-                    for node in nodes_with_pos:
-                        node_x = node.get('x', 0)
-                        node_y = node.get('y', 0)
-                        
-                        # Scale the coordinates to match the canvas
-                        # This is a rough approximation - might need adjusting
-                        node_canvas_x = (node_x + 0.5) * canvas_width
-                        node_canvas_y = (node_y + 0.5) * canvas_height
-                        
-                        # Calculate Euclidean distance
-                        distance = ((node_canvas_x - click_x) ** 2 + (node_canvas_y - click_y) ** 2) ** 0.5
-                        
-                        if distance < min_distance:
-                            min_distance = distance
-                            closest_node = node
-                    
-                    # Use a threshold based on the canvas size
-                    click_threshold = min(canvas_width, canvas_height) * 0.1  # 10% of the smallest dimension
-                    
-                    if closest_node and min_distance < click_threshold:
-                        node_id = closest_node['id']
-                        logger.info(f"Found closest node: {node_id} at distance {min_distance:.2f} (threshold: {click_threshold:.2f})")
-                        
-                        # Handle different actions
-                        if action == 'canvas_click':
-                            # Regular click - select and center the node
-                            st.session_state.selected_node = node_id
-                            st.session_state.show_node_details = True
-                            st.session_state.center_node_id = node_id
-                            set_central(node_id)
-                            logger.info(f"Selected and centered node {node_id}")
-                            canvas_action_successful = True
-                        
-                        elif action == 'canvas_dblclick':
-                            # Double-click - edit the node
-                            st.session_state['edit_node'] = node_id
-                            logger.info(f"Opening edit modal for node {node_id}")
-                            canvas_action_successful = True
-                        
-                        elif action == 'canvas_contextmenu':
-                            # Right-click - delete the node (and its descendants)
-                            logger.info(f"Deleting node {node_id}")
-                            
-                            # Save state before deletion
-                            save_state_to_history()
-                            
-                            # Remove node and its descendants
-                            to_remove = set()
-                            
-                            def collect_descendants(nid):
-                                to_remove.add(nid)
-                                for child in [n for n in ideas if n.get('parent') == nid]:
-                                    collect_descendants(child['id'])
-                            
-                            collect_descendants(node_id)
-                            set_ideas([n for n in ideas if n['id'] not in to_remove])
-                            
-                            if get_central() in to_remove:
-                                new_central = next((n['id'] for n in ideas if n['id'] not in to_remove), None)
-                                set_central(new_central)
-                            
-                            logger.info(f"Deleted node {node_id} and {len(to_remove)-1} descendants")
-                            canvas_action_successful = True
-                    else:
-                        logger.warning(f"No node found near click coordinates (closest distance: {min_distance:.2f}, threshold: {click_threshold:.2f})")
-                else:
-                    logger.warning("No nodes with position data found")
-                
-                # Show warning message if action failed
-                if not canvas_action_successful:
-                    st.warning(f"No node found near click position ({click_x:.1f}, {click_y:.1f}). Try clicking closer to a node.")
-            
-            # Process legacy message types (for backward compatibility)
-            elif action == 'select_node':
-                node_id = payload.get('id')
-                if node_id is not None:
-                    node_id = int(node_id)  # Convert to int if needed
-                    logger.info(f"Node selected: {node_id}")
-                    st.session_state.selected_node = node_id
-                    st.session_state.show_node_details = True
-                    st.session_state.center_node_id = node_id
-            elif action == 'center_node':
-                node_id = payload.get('id')
-                if node_id is not None:
-                    node_id = int(node_id)  # Convert to int if needed
-                    logger.info(f"Centering node: {node_id}")
-                    st.session_state.center_node_id = node_id
-                    set_central(node_id)  # Update the central node
-            elif action == 'edit_modal':
-                node_id = payload.get('id')
-                if node_id is not None:
-                    node_id = int(node_id)  # Convert to int if needed
-                    logger.info(f"Opening edit modal for node: {node_id}")
-                    st.session_state['edit_node'] = node_id
-            elif action == 'delete':
-                node_id = payload.get('id')
-                if node_id is not None:
-                    node_id = int(node_id)  # Convert to int if needed
-                    logger.info(f"Deleting node: {node_id}")
-                    ideas = get_ideas()
-                    # Save state before deletion
-                    save_state_to_history()
-                    # Remove node and its descendants
-                    to_remove = set()
-                    
-                    def collect_descendants(nid):
-                        to_remove.add(nid)
-                        for child in [n for n in ideas if n.get('parent') == nid]:
-                            collect_descendants(child['id'])
-                    
-                    collect_descendants(node_id)
-                    set_ideas([n for n in ideas if n['id'] not in to_remove])
-                    if get_central() in to_remove:
-                        set_central(None)
-            elif action == 'pos':
-                logger.info(f"Updating node positions: {payload}")
-                for node_id_str, pos in payload.items():
-                    try:
-                        node_id = int(node_id_str)
-                        ideas = get_ideas()
-                        for node in ideas:
-                            if node['id'] == node_id:
-                                node['x'] = pos['x']
-                                node['y'] = pos['y']
-                                break
-                    except (ValueError, KeyError):
-                        logger.error(f"Error processing position for node ID {node_id_str}")
-            else:
-                logger.warning(f"Unknown action type: {action}")
-            
-            # Log success and save data
-            logger.info("Message processed successfully")
-            save_data(get_store())
-            
-            # Clear query parameters after processing
-            st.experimental_set_query_params()
-            
-            # Force a rerun to update the UI immediately
-            st.rerun()
-            
+                    # Handle other action types
+                    logger.info(f"Processing regular action: {action}")
         except Exception as e:
-            logger.error(f"Error processing message: {str(e)}", exc_info=True)
-            st.error(f"Error processing message: {str(e)}")
-    else:
-        logger.debug("No message to process")
+            logger.error(f"Error processing message: {str(e)}")
+            logger.error(traceback.format_exc())
 
     # Node details section for both central and selected nodes
     # Use only the central node approach
@@ -1499,93 +1729,231 @@ try:
     # Add JavaScript to handle postMessage from iframe - using Streamlit's session state
     streamlit_js = """
     <script>
-    // Log that this parent window script is loaded
-    console.log('Parent window message handler initialized');
+    // Wait for DOM to be fully loaded before running
+    document.addEventListener('DOMContentLoaded', function() {
+        // Log that this parent window script is loaded
+        console.log('Parent window message handler initialized');
 
-    // Listen for messages from the iframe
-    window.addEventListener('message', function(event) {
-        console.log('Parent window received message:', event.data);
-        
-        // Check if message is from our network canvas
-        if (event.data && event.data.source === 'network_canvas') {
-            try {
-                // Get the action and payload
-                var action = event.data.action;
-                var payload = event.data.payload;
-                
-                console.log('Processing message from canvas:', action, payload);
-                
-                // Display processing information in the page for visibility
-                var debugInfo = document.createElement('div');
-                debugInfo.style.position = 'fixed';
-                debugInfo.style.top = '10px';
-                debugInfo.style.right = '10px';
-                debugInfo.style.backgroundColor = 'rgba(255, 255, 0, 0.8)';
-                debugInfo.style.padding = '10px';
-                debugInfo.style.borderRadius = '5px';
-                debugInfo.style.zIndex = '9999';
-                debugInfo.innerHTML = 'Processing: ' + action + ' at ' + new Date().toLocaleTimeString();
-                document.body.appendChild(debugInfo);
-                
-                // Remove the debug info after 3 seconds
-                setTimeout(function() {
-                    document.body.removeChild(debugInfo);
-                }, 3000);
-                
-                // Use window.location to navigate with query parameters
-                // This is the most reliable way to communicate with Streamlit
-                var params = new URLSearchParams();
-                params.set('action', action);
-                params.set('payload', JSON.stringify(payload));
-                
-                // Create the URL with the base path and parameters
-                var newUrl = window.location.pathname + '?' + params.toString();
-                
-                // Navigate to the URL with parameters
-                console.log('Navigating to:', newUrl);
-                window.location.href = newUrl;
-            } catch (error) {
-                console.error('Error processing message from canvas:', error);
-                
-                // Display error in the page for visibility
-                var errorInfo = document.createElement('div');
-                errorInfo.style.position = 'fixed';
-                errorInfo.style.top = '10px';
-                errorInfo.style.right = '10px';
-                errorInfo.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
-                errorInfo.style.color = 'white';
-                errorInfo.style.padding = '10px';
-                errorInfo.style.borderRadius = '5px';
-                errorInfo.style.zIndex = '9999';
-                errorInfo.innerHTML = 'Error: ' + error.message;
-                document.body.appendChild(errorInfo);
-                
-                // Remove the error info after 5 seconds
-                setTimeout(function() {
-                    document.body.removeChild(errorInfo);
-                }, 5000);
+        try {
+            // Create a visible debug element
+            var parentDebugDiv = document.createElement('div');
+            parentDebugDiv.id = 'parent-debug';
+            parentDebugDiv.style.position = 'fixed';
+            parentDebugDiv.style.bottom = '10px';
+            parentDebugDiv.style.right = '10px';
+            parentDebugDiv.style.backgroundColor = 'rgba(0,0,0,0.7)';
+            parentDebugDiv.style.color = 'white';
+            parentDebugDiv.style.padding = '10px';
+            parentDebugDiv.style.borderRadius = '5px';
+            parentDebugDiv.style.fontSize = '12px';
+            parentDebugDiv.style.zIndex = '10000';
+            parentDebugDiv.style.maxWidth = '300px';
+            parentDebugDiv.style.maxHeight = '200px';
+            parentDebugDiv.style.overflow = 'auto';
+            parentDebugDiv.innerHTML = 'Parent window handler active...';
+            
+            // Safe DOM insertion
+            if (document.body) {
+                document.body.appendChild(parentDebugDiv);
+                console.log('Debug overlay created successfully');
+            } else {
+                console.error('Cannot find document.body!');
             }
+
+            function parentDebugLog(message) {
+                console.log(message);
+                if (parentDebugDiv) {
+                    var entry = document.createElement('div');
+                    entry.textContent = new Date().toLocaleTimeString() + ': ' + message;
+                    parentDebugDiv.appendChild(entry);
+                    
+                    // Keep only last 10 messages
+                    while (parentDebugDiv.childNodes.length > 10) {
+                        parentDebugDiv.removeChild(parentDebugDiv.firstChild);
+                    }
+                } else {
+                    console.log('Debug message (no div):', message);
+                }
+            }
+
+            // Listen for messages from the iframe
+            window.addEventListener('message', function(event) {
+                console.log('Received message:', event.data);
+                parentDebugLog('Received message: ' + JSON.stringify(event.data));
+                
+                // Check if message is from our network canvas - handle both formats
+                if (event.data) {
+                    try {
+                        // Get the action and payload - handle both message formats
+                        var action, payload;
+                        
+                        if (event.data.source === 'network_canvas') {
+                            // Format from direct canvas handlers
+                            action = event.data.action;
+                            payload = event.data.payload;
+                            parentDebugLog('Processing network_canvas message: ' + action);
+                        } else if (event.data.action) {
+                            // Alternative format
+                            action = event.data.action;
+                            payload = event.data.payload;
+                            parentDebugLog('Processing alternative format message: ' + action);
+                        } else {
+                            parentDebugLog('Unknown message format, ignoring');
+                            return;
+                        }
+                        
+                        parentDebugLog('Processing: ' + action + ' at (' + 
+                            (payload && payload.x ? payload.x.toFixed(1) : 'unknown') + ', ' + 
+                            (payload && payload.y ? payload.y.toFixed(1) : 'unknown') + ')');
+                        
+                        // Manual URL parameter update approach
+                        try {
+                            // Create URL parameters directly
+                            var baseUrl = window.location.pathname;
+                            var newParams = new URLSearchParams();
+                            newParams.set('action', action);
+                            
+                            // Make sure to preserve all payload fields for coordinate calculations
+                            if (payload) {
+                                // Add canvas dimensions if missing
+                                if (payload.x !== undefined && payload.y !== undefined) {
+                                    if (payload.canvasWidth === undefined || payload.canvasHeight === undefined) {
+                                        // Find the iframe that contains the network
+                                        var iframes = document.querySelectorAll('iframe');
+                                        for (var i = 0; i < iframes.length; i++) {
+                                            try {
+                                                if (iframes[i].contentWindow && 
+                                                    iframes[i].contentWindow.document && 
+                                                    iframes[i].contentWindow.document.getElementById('mynetwork')) {
+                                                    var rect = iframes[i].getBoundingClientRect();
+                                                    payload.canvasWidth = rect.width;
+                                                    payload.canvasHeight = rect.height;
+                                                    parentDebugLog('Added canvas dimensions: ' + rect.width + 'x' + rect.height);
+                                                    break;
+                                                }
+                                            } catch (e) {
+                                                // Ignore cross-origin errors
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            newParams.set('payload', JSON.stringify(payload));
+                            
+                            var newUrl = baseUrl + '?' + newParams.toString();
+                            parentDebugLog('Setting URL to: ' + newUrl);
+                            
+                            // Force reload with the new URL
+                            setTimeout(function() {
+                                window.location.href = newUrl;
+                            }, 100);
+                        } catch (urlError) {
+                            parentDebugLog('URL parameter setting failed: ' + urlError.message);
+                            // Last resort: reload the page to pick up cached messages
+                            setTimeout(function() { 
+                                location.reload(); 
+                            }, 200);
+                        }
+                    } catch (error) {
+                        console.error('Error processing message:', error);
+                        parentDebugLog('ERROR in message processing: ' + error.message);
+                    }
+                }
+            });
+
+            // Add localStorage fallback listener
+            try {
+                parentDebugLog('Setting up localStorage listener');
+                window.addEventListener('storage', function(event) {
+                    if (event.key === 'mindmap_message') {
+                        try {
+                            parentDebugLog('Received message via localStorage');
+                            var data = JSON.parse(event.newValue);
+                            
+                            if (data && data.action) {
+                                parentDebugLog('Processing localStorage message: ' + data.action);
+                                
+                                // Process in the same way as postMessage
+                                var baseUrl = window.location.pathname;
+                                var newParams = new URLSearchParams();
+                                newParams.set('action', data.action);
+                                newParams.set('payload', JSON.stringify(data.payload));
+                                
+                                var newUrl = baseUrl + '?' + newParams.toString();
+                                parentDebugLog('Setting URL via localStorage: ' + newUrl);
+                                
+                                // Force reload with the new URL
+                                setTimeout(function() {
+                                    window.location.href = newUrl;
+                                }, 100);
+                            }
+                        } catch (e) {
+                            parentDebugLog('Error processing localStorage message: ' + e.message);
+                        }
+                    }
+                });
+                
+                // Check for any existing message in localStorage
+                if (window.localStorage && localStorage.getItem('mindmap_message')) {
+                    parentDebugLog('Found existing message in localStorage');
+                    try {
+                        var storedData = JSON.parse(localStorage.getItem('mindmap_message'));
+                        if (storedData && storedData.action) {
+                            parentDebugLog('Processing stored message: ' + storedData.action);
+                            
+                            // Process the stored message
+                            var baseUrl = window.location.pathname;
+                            var newParams = new URLSearchParams();
+                            newParams.set('action', storedData.action);
+                            newParams.set('payload', JSON.stringify(storedData.payload));
+                            
+                            var newUrl = baseUrl + '?' + newParams.toString();
+                            parentDebugLog('Setting URL from stored message: ' + newUrl);
+                            
+                            // Force reload with the new URL
+                            setTimeout(function() {
+                                window.location.href = newUrl;
+                            }, 100);
+                            
+                            // Clear the stored message after processing
+                            localStorage.removeItem('mindmap_message');
+                        }
+                    } catch (e) {
+                        parentDebugLog('Error processing stored message: ' + e.message);
+                    }
+                }
+            } catch (storageError) {
+                parentDebugLog('localStorage listener setup failed: ' + storageError.message);
+            }
+
+            parentDebugLog('Parent handler initialized successfully');
+        } catch (setupError) {
+            console.error('Critical error in parent handler setup:', setupError);
         }
     });
-
-    // For testing, you can use this function to manually trigger a message
-    window.sendTestMessage = function(action, payload) {
-        console.log('Sending test message:', action, payload);
-        var params = new URLSearchParams();
-        params.set('action', action);
-        params.set('payload', JSON.stringify(payload));
-        
-        var newUrl = window.location.pathname + '?' + params.toString();
-        window.location.href = newUrl;
-    };
-    
-    // Log that this parent window script has completed initialization
-    console.log('Parent window message handler setup complete');
     </script>
     """
 
     # Add the Streamlit JS to the page
     st.components.v1.html(streamlit_js, height=0)
+
+    # Add a simple namespace check for Streamlit to avoid the syntax error
+    streamlit_namespace_fix = """
+    <script>
+    // Fix for the "Uncaught SyntaxError: Unexpected identifier 'Streamlit'" error
+    // Check if Streamlit exists before using it
+    if (typeof window.Streamlit === 'undefined') {
+        window.Streamlit = { 
+            setComponentValue: function() { console.log('Streamlit mock: setComponentValue called'); },
+            setComponentReady: function() { console.log('Streamlit mock: setComponentReady called'); },
+            receiveMessageFromPython: function() { console.log('Streamlit mock: receiveMessageFromPython called'); }
+        };
+        console.log('Created Streamlit namespace mock to prevent errors');
+    }
+    </script>
+    """
+    st.components.v1.html(streamlit_namespace_fix, height=0)
 
     # Add an option in the debug tools to switch to direct click mode
     with st.expander("Debug Tools", expanded=True):
@@ -1676,59 +2044,55 @@ try:
             st.success(f"Test message sent: {test_action}, node ID: {node_id_for_test}")
             st.rerun()
 
-    # Add a local storage-based message passing as a fallback method
-    direct_js += """
+    # Add a mechanism to preserve message history in localStorage
+    message_history_backup = """
     <script>
-    // Add local storage message passing as an additional fallback
-    // This helps with certain cross-origin scenarios where other methods fail
-    
-    // Listen for local storage changes
-    window.addEventListener('storage', function(event) {
-        if (event.key === 'mindmap_message' && event.newValue) {
+    // Backup and restore message history using localStorage to preserve across reloads
+    (function() {
+        const MESSAGE_HISTORY_KEY = 'mindmap_message_history';
+        
+        // Function to save message history to localStorage
+        function saveMessageHistory() {
             try {
-                var message = JSON.parse(event.newValue);
-                debugLog('Received message from localStorage: ' + message.action);
-                
-                // Clear the storage immediately to prevent duplicate handling
-                localStorage.removeItem('mindmap_message');
-                
-                // Process the message locally
-                if (typeof simpleSendMessage === 'function') {
-                    simpleSendMessage(message.action, message.payload);
-                } else {
-                    debugLog('ERROR: simpleSendMessage function not available');
+                // Look for Streamlit's message history in the DOM
+                const debugLogContent = document.querySelector('[data-testid="stExpander"] [data-testid="stMarkdownContainer"]');
+                if (debugLogContent && debugLogContent.textContent.includes('Message History')) {
+                    // Message history exists, store that we've seen messages
+                    localStorage.setItem(MESSAGE_HISTORY_KEY, 'has_messages');
+                    console.log('Marked message history as existing');
                 }
             } catch (e) {
-                console.error('Error processing localStorage message:', e);
+                console.error('Error saving message history:', e);
             }
         }
-    });
-    
-    // Add a localStorage communication method
-    window.sendViaLocalStorage = function(action, payload) {
-        try {
-            var message = {
-                action: action,
-                payload: payload,
-                timestamp: new Date().getTime()
-            };
+        
+        // Wait for page to load
+        window.addEventListener('load', function() {
+            // Schedule check for messages
+            setTimeout(saveMessageHistory, 2000);
             
-            // Store the message
-            localStorage.setItem('mindmap_message', JSON.stringify(message));
+            // Check for message history flag and force reload if missing
+            const hasQueryParam = window.location.search.includes('action=');
+            const hasMessages = localStorage.getItem(MESSAGE_HISTORY_KEY) === 'has_messages';
             
-            // Trigger storage event in other windows/frames
-            // This is needed because storage events only fire in other windows/frames
-            localStorage.setItem('mindmap_trigger', Date.now());
-            localStorage.removeItem('mindmap_trigger');
+            console.log('Page loaded. Has query param:', hasQueryParam, 'Has messages:', hasMessages);
             
-            return true;
-        } catch (e) {
-            console.error('Error sending via localStorage:', e);
-            return false;
-        }
-    };
+            if (hasQueryParam && !hasMessages) {
+                console.log('Query parameter present but message history missing - reloading to refresh state');
+                // Clear the flag so we don't enter a loop
+                localStorage.removeItem(MESSAGE_HISTORY_KEY);
+                // Force a reload after delay to let the page render
+                setTimeout(function() {
+                    window.location.reload();
+                }, 1000);
+            }
+        });
+    })();
     </script>
     """
+    
+    # Add the history backup script
+    st.components.v1.html(message_history_backup, height=0)
 
 except Exception as e:
     logger.error(f"Unhandled exception: {str(e)}")
