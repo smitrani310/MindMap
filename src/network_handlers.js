@@ -1,6 +1,8 @@
 // Network interaction handlers for the Enhanced Mind Map
 
 function initializeNetworkHandlers(network, searchQuery) {
+    console.log('Initializing network handlers...');
+    
     // Create a hidden form for message passing
     const formDiv = document.createElement('div');
     formDiv.style.display = 'none';
@@ -16,6 +18,7 @@ function initializeNetworkHandlers(network, searchQuery) {
     // Message passing via form submission
     function send(action, payload) {
         try {
+            console.log('Sending message:', action, payload);
             document.getElementById('message-type').value = action;
             document.getElementById('message-payload').value = JSON.stringify(payload);
             document.getElementById('message-form').submit();
@@ -26,11 +29,13 @@ function initializeNetworkHandlers(network, searchQuery) {
 
     // Initialize physics
     network.once('afterDrawing', () => {
+        console.log('Network drawing complete, stabilizing...');
         network.stabilize(100);
     });
 
     // Handle node dragging
     network.on('dragEnd', (params) => {
+        console.log('Drag end event:', params);
         if (params.nodes.length === 1) {
             const pos = {};
             const id = params.nodes[0];
@@ -42,14 +47,18 @@ function initializeNetworkHandlers(network, searchQuery) {
 
     // Click for node details
     network.on('click', (params) => {
+        console.log('Click event:', params);
         if (params.nodes.length === 1) {
             const id = params.nodes[0];
             send('select_node', { id });
+            // Also center the node
+            send('center_node', { id });
         }
     });
 
     // Double-click for edit
     network.on('doubleClick', (params) => {
+        console.log('Double click event:', params);
         if (params.nodes.length === 1) {
             const id = params.nodes[0];
             send('edit_modal', { id });
@@ -58,6 +67,7 @@ function initializeNetworkHandlers(network, searchQuery) {
 
     // Context menu for delete
     network.on('contextmenu', (params) => {
+        console.log('Context menu event:', params);
         params.event.preventDefault();
         if (params.nodes.length === 1) {
             const id = params.nodes[0];
@@ -94,6 +104,7 @@ function initializeNetworkHandlers(network, searchQuery) {
 
     // Search highlight
     if (searchQuery) {
+        console.log('Applying search highlight for:', searchQuery);
         const nodes = network.body.data.nodes;
         nodes.forEach((n) => {
             if (n.label.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -101,4 +112,30 @@ function initializeNetworkHandlers(network, searchQuery) {
             }
         });
     }
-} 
+
+    console.log('Network handlers initialized successfully');
+}
+
+// Wait for the network to be available
+function waitForNetwork() {
+    console.log('Waiting for network...');
+    const checkInterval = setInterval(() => {
+        const networkDiv = document.getElementById('mynetwork');
+        if (networkDiv) {
+            const canvasElements = networkDiv.querySelectorAll('canvas');
+            if (canvasElements.length > 0) {
+                for (let i = 0; i < canvasElements.length; i++) {
+                    if (canvasElements[i].network) {
+                        console.log('Network found, initializing handlers...');
+                        clearInterval(checkInterval);
+                        initializeNetworkHandlers(canvasElements[i].network, window.searchQuery);
+                        break;
+                    }
+                }
+            }
+        }
+    }, 100);
+}
+
+// Start waiting for the network
+waitForNetwork(); 

@@ -962,12 +962,14 @@ try:
     '''
     
     # Add debug flag for network initialization
+    search_query = search_q if search_replace else None
     debug_script = '''
     <script>
     window.DEBUG = {
         enabled: true,
         network_debug: true
     };
+    window.searchQuery = ''' + json.dumps(search_query) + ''';
     </script>
     '''
     
@@ -980,67 +982,7 @@ try:
     html_parts = html.split('</body>', 1)
     if len(html_parts) > 1:
         pre_body_end, post_body_end = html_parts
-        
-        # Create a very simple click handler
-        simple_click_handler = '''
-        <script>
-        // Wait for the network to initialize
-        setTimeout(function() {
-            try {
-                var networkDiv = document.getElementById('mynetwork');
-                if (networkDiv) {
-                    var canvasElements = networkDiv.querySelectorAll('canvas');
-                    if (canvasElements.length > 0) {
-                        for (var i = 0; i < canvasElements.length; i++) {
-                            if (canvasElements[i].network) {
-                                var network = canvasElements[i].network;
-                                
-                                // Add click handler
-                                network.on('click', function(params) {
-                                    if (params.nodes.length === 1) {
-                                        var nodeId = params.nodes[0];
-                                        console.log('Node clicked:', nodeId);
-                                        
-                                        // Create a hidden form for submission
-                                        var form = document.createElement('form');
-                                        form.method = 'get';
-                                        form.action = window.location.pathname;
-                                        form.style.display = 'none';
-                                        
-                                        // Create action input
-                                        var actionInput = document.createElement('input');
-                                        actionInput.type = 'hidden';
-                                        actionInput.name = 'action';
-                                        actionInput.value = 'center_node';
-                                        form.appendChild(actionInput);
-                                        
-                                        // Create payload input
-                                        var payloadInput = document.createElement('input');
-                                        payloadInput.type = 'hidden';
-                                        payloadInput.name = 'payload';
-                                        payloadInput.value = JSON.stringify({ id: nodeId });
-                                        form.appendChild(payloadInput);
-                                        
-                                        // Add form to document and submit
-                                        document.body.appendChild(form);
-                                        console.log('Submitting form for node:', nodeId);
-                                        form.submit();
-                                    }
-                                });
-                                
-                                console.log('Click handler added successfully');
-                            }
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error('Error setting up click handler:', e);
-            }
-        }, 1000);
-        </script>
-        '''
-        
-        html = f"{pre_body_end}{js_handlers}{simple_click_handler}</body>{post_body_end}"
+        html = f"{pre_body_end}{js_handlers}</body>{post_body_end}"
     else:
         html = f"{html}{js_handlers}"
     
