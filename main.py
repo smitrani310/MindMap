@@ -1044,35 +1044,6 @@ try:
     # Add direct event listeners to guarantee they are attached
     direct_js = """
     <script>
-    // Debug overlay
-    var debugDiv = document.createElement('div');
-    debugDiv.id = 'js-debug';
-    debugDiv.style.position = 'absolute';
-    debugDiv.style.top = '10px';
-    debugDiv.style.left = '10px';
-    debugDiv.style.backgroundColor = 'rgba(255,255,255,0.8)';
-    debugDiv.style.padding = '5px';
-    debugDiv.style.borderRadius = '5px';
-    debugDiv.style.fontSize = '12px';
-    debugDiv.style.zIndex = '1000';
-    debugDiv.style.maxWidth = '300px';
-    debugDiv.style.maxHeight = '200px';
-    debugDiv.style.overflow = 'auto';
-    debugDiv.innerHTML = 'JavaScript debugging...';
-    document.body.appendChild(debugDiv);
-
-    function debugLog(message) {
-        var entry = document.createElement('div');
-        entry.textContent = new Date().toLocaleTimeString() + ': ' + message;
-        debugDiv.appendChild(entry);
-        
-        // Keep only last 10 messages
-        while (debugDiv.childNodes.length > 10) {
-            debugDiv.removeChild(debugDiv.firstChild);
-        }
-        console.log(message); // Also log to console
-    }
-
     // Create a hidden form for direct form submissions
     var hiddenForm = document.createElement('form');
     hiddenForm.id = 'hidden-message-form';
@@ -1104,13 +1075,35 @@ try:
 
     // Add form to document
     document.body.appendChild(hiddenForm);
-    debugLog('Hidden form created for communication');
 
+    // Create global helper for direct parent-frame communication using pure postMessage
+    window.directParentCommunication = {
+        sendMessage: function(action, payload) {
+            try {
+                console.log('POSTMESSAGE: Sending message to parent: ' + action);
+                
+                // Create the message object
+                var message = {
+                    source: 'network_canvas',
+                    action: action,
+                    payload: payload,
+                    timestamp: Date.now()
+                };
+                
+                // Send to parent directly - this works even in sandboxed iframes
+                window.parent.postMessage(message, '*');
+                console.log('POSTMESSAGE: Message sent to parent');
+                return true;
+            } catch(e) {
+                console.error('POSTMESSAGE: Communication failed: ' + e.message);
+                return false;
+            }
+        }
+    };
+    
     // Communication helper for sending messages to Streamlit
     function simpleSendMessage(action, payload) {
         try {
-            debugLog(`Sending message: ${action}`);
-            
             // Package the message with source identifier
             var message = {
                 source: 'network_canvas',
@@ -1122,6 +1115,17 @@ try:
             // Track if any communication method succeeds
             var communicationSucceeded = false;
             
+            // Try direct parent communication first (most reliable)
+            try {
+                const directResult = window.directParentCommunication.sendMessage(action, payload);
+                if (directResult) {
+                    communicationSucceeded = true;
+                    return; // Exit early if successful
+                }
+            } catch(e) {
+                console.error('Direct parent communication failed: ' + e.message);
+            }
+            
             // Method 1: Send via postMessage (main method)
             try {
                 // Try multiple targets (sometimes frames can be nested)
@@ -1132,29 +1136,26 @@ try:
                         const target = targets[i];
                         if (target && target !== window) {
                             target.postMessage(message, '*');
-                            debugLog(`Message sent via postMessage to target ${i}`);
                             communicationSucceeded = true;
                             break;
                         }
                     } catch (e) {
-                        debugLog(`Failed to send to target ${i}: ${e.message}`);
+                        console.error(`Failed to send to target ${i}: ${e.message}`);
                     }
                 }
                 
                 if (!communicationSucceeded) {
                     // Try standard window.parent as last resort
                     window.parent.postMessage(message, '*');
-                    debugLog('Message sent via standard postMessage');
                     communicationSucceeded = true;
                 }
             } catch(e) {
-                debugLog('All postMessage attempts failed: ' + e.message);
+                console.error('All postMessage attempts failed: ' + e.message);
             }
             
             // Method 2: Direct URL parameter modification if postMessage failed
             if (!communicationSucceeded) {
                 try {
-                    debugLog('Attempting URL parameter method');
                     var params = new URLSearchParams(window.location.search);
                     params.set('action', action);
                     
@@ -1167,39 +1168,34 @@ try:
                                 var rect = networkDiv.getBoundingClientRect();
                                 payload.canvasWidth = rect.width;
                                 payload.canvasHeight = rect.height;
-                                debugLog(`Added canvas dimensions: ${rect.width}x${rect.height}`);
                             }
                         }
                     }
                     
                     params.set('payload', JSON.stringify(payload));
                     var newUrl = window.top.location.pathname + '?' + params.toString();
-                    debugLog('Navigating to: ' + newUrl);
                     window.top.location.href = newUrl;
                     communicationSucceeded = true;
                     return; // Success, so return early
                 } catch(e) {
-                    debugLog('URL parameter method failed: ' + e.message);
+                    console.error('URL parameter method failed: ' + e.message);
                 }
             }
             
             // Method 3: Try localStorage if available and previous methods failed
             if (!communicationSucceeded && window.localStorage) {
                 try {
-                    debugLog('Attempting localStorage method');
                     localStorage.setItem('mindmap_message', JSON.stringify(message));
                     localStorage.setItem('mindmap_trigger_reload', Date.now().toString());
-                    debugLog('Message sent via localStorage');
                     communicationSucceeded = true;
                 } catch(e) {
-                    debugLog('localStorage method failed: ' + e.message);
+                    console.error('localStorage method failed: ' + e.message);
                 }
             }
             
             // Method 4: Form submission as last resort
             if (!communicationSucceeded) {
                 try {
-                    debugLog('Attempting form submission method');
                     var form = document.getElementById('hidden-message-form');
                     var actionInput = document.getElementById('hidden-action-input');
                     var payloadInput = document.getElementById('hidden-payload-input');
@@ -1207,36 +1203,24 @@ try:
                     if (form && actionInput && payloadInput) {
                         actionInput.value = action;
                         payloadInput.value = JSON.stringify(payload);
-                        debugLog('Submitting hidden form');
                         form.submit();
                         communicationSucceeded = true;
-                    } else {
-                        debugLog('Hidden form elements not found');
                     }
                 } catch(e) {
-                    debugLog('Form submission method failed: ' + e.message);
+                    console.error('Form submission method failed: ' + e.message);
                 }
             }
-            
-            // Log final communication status
-            if (communicationSucceeded) {
-                debugLog('Successfully sent message using at least one method');
-            } else {
-                debugLog('CRITICAL: All communication methods failed');
-            }
         } catch(e) {
-            debugLog('CRITICAL ERROR in simpleSendMessage: ' + e.message);
+            console.error('CRITICAL ERROR in simpleSendMessage: ' + e.message);
         }
     }
 
     // Add a simplified click handler
     document.addEventListener('DOMContentLoaded', function() {
-        debugLog('Setting up direct canvas click handler');
-        
         // Find the canvas container
         var networkDiv = document.getElementById('mynetwork');
         if (!networkDiv) {
-            debugLog('ERROR: mynetwork div not found');
+            console.error('ERROR: mynetwork div not found');
             return;
         }
         
@@ -1246,8 +1230,6 @@ try:
             var rect = networkDiv.getBoundingClientRect();
             var relX = event.clientX - rect.left;
             var relY = event.clientY - rect.top;
-            
-            debugLog(`Canvas clicked at: (${relX}, ${relY})`);
             
             // Send the click event with coordinates
             simpleSendMessage('canvas_click', {
@@ -1265,8 +1247,6 @@ try:
             var rect = networkDiv.getBoundingClientRect();
             var relX = event.clientX - rect.left;
             var relY = event.clientY - rect.top;
-            
-            debugLog(`Canvas double-clicked at: (${relX}, ${relY})`);
             
             // Send the double-click event
             simpleSendMessage('canvas_dblclick', {
@@ -1291,8 +1271,6 @@ try:
             var relX = event.clientX - rect.left;
             var relY = event.clientY - rect.top;
             
-            debugLog(`Canvas right-clicked at: (${relX}, ${relY})`);
-            
             // Confirm deletion
             if (confirm('Delete this bubble?')) {
                 // Send the right-click event
@@ -1307,8 +1285,6 @@ try:
             
             return false;
         });
-        
-        debugLog('Direct canvas handlers set up successfully');
     });
     </script>
     """
@@ -1352,118 +1328,14 @@ try:
         
         # Log to console/file
         logger.info(f"Received message: action={action}, payload={payload_str}")
-    
-    # Debug expander to show message flow
-    with st.expander("Debug Message Log", expanded=False):
-        st.write("This section shows the messages received from the canvas.")
         
-        # Add columns for current parameters
-        col1, col2 = st.columns(2)
-        col1.write("**Current Action:**")
-        col1.code(action or "None")
-        
-        col2.write("**Current Payload:**")
-        col2.code(payload_str or "None")
-        
-        # Show history of messages
-        st.write("**Message History:**")
-        if st.session_state.message_debug:
-            for idx, msg in enumerate(reversed(st.session_state.message_debug[-10:])):
-                with st.container():
-                    st.markdown(f"**Message {idx+1}** - {msg.get('time', 'unknown time')}")
-                    message_cols = st.columns(2)
-                    message_cols[0].write("Action:")
-                    message_cols[0].code(msg.get('action', 'None'))
-                    message_cols[1].write("Payload:")
-                    message_cols[1].code(msg.get('payload', 'None'))
-        else:
-            st.info("No messages received yet.")
-            # Add a check for recent cookie messages button
-            if st.button("Check for Recent Messages", key="check_recent_msgs"):
-                st.info("Looking for messages in browser storage...")
-                st.rerun()
-        
-        # Clear log button
-        if st.button("Clear Log"):
-            st.session_state.message_debug = []
-            st.rerun()
-    
-    # Add cookie storage script for messages
-    cookie_message_storage = """
-    <script>
-    // Script to store the most recent message in cookies as backup
-    (function() {
-        // Function to store message in cookie
-        function setMessageCookie(message) {
-            try {
-                const msgStr = JSON.stringify(message);
-                document.cookie = `last_message=${encodeURIComponent(msgStr)};path=/;max-age=3600`;
-                console.log('Message stored in cookie');
-            } catch (e) {
-                console.error('Error storing message in cookie:', e);
-            }
-        }
-        
-        // Function to read message from cookie
-        function getMessageCookie() {
-            try {
-                const cookies = document.cookie.split(';');
-                for (let cookie of cookies) {
-                    cookie = cookie.trim();
-                    if (cookie.startsWith('last_message=')) {
-                        const msgStr = decodeURIComponent(cookie.substring('last_message='.length));
-                        return JSON.parse(msgStr);
-                    }
-                }
-            } catch (e) {
-                console.error('Error reading message from cookie:', e);
-            }
-            return null;
-        }
-        
-        // Store current message if in URL parameters
-        window.addEventListener('load', function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const action = urlParams.get('action');
-            const payload = urlParams.get('payload');
-            
-            if (action && payload) {
-                const message = {
-                    action: action,
-                    payload: payload,
-                    time: new Date().toLocaleTimeString()
-                };
-                setMessageCookie(message);
-                console.log('Stored message in cookie:', message);
-            }
-            
-            // Check if we should inject message from cookie
-            const debugLog = document.querySelector('[data-testid="stExpander"] [data-testid="stMarkdownContainer"]');
-            if (debugLog && debugLog.textContent.includes('No messages received yet')) {
-                console.log('No messages found in debug log, checking cookie...');
-                const lastMessage = getMessageCookie();
-                if (lastMessage) {
-                    console.log('Found message in cookie:', lastMessage);
-                    // Find the Check button and click it
-                    setTimeout(function() {
-                        const buttons = document.querySelectorAll('button');
-                        for (let button of buttons) {
-                            if (button.textContent.includes('Check for Recent Messages')) {
-                                console.log('Clicking check button to restore messages');
-                                button.click();
-                                break;
-                            }
-                        }
-                    }, 500);
-                }
-            }
-        });
-    })();
-    </script>
-    """
-    
-    # Add the cookie message storage script
-    st.components.v1.html(cookie_message_storage, height=0)
+        # Add a prominent notification banner
+        st.success(f"🔔 Message received: **{action}** at {current_time}")
+
+    # Remove message stats columns
+    # Remove communication diagnostics expander
+    # Remove debug message log expander
+    # Remove the two buttons
 
     if action:
         try:
@@ -1660,47 +1532,6 @@ try:
         # Display node with a clean style, matching the center button approach
         st.subheader(f"📌 Selected: {display_node['label']}")
 
-        # Add buttons for the selected node in a row
-        edit_col, delete_col = st.columns(2)
-        
-        # Edit button
-        if edit_col.button("✏️ Edit Selected Node", help="Edit this node's properties"):
-            node_id = display_node['id']
-            logger.info(f"Opening edit modal for node {node_id} via direct button click")
-            st.session_state['edit_node'] = node_id
-            st.rerun()
-        
-        # Delete button
-        if delete_col.button("🗑️ Delete Selected Node", type="primary", help="Delete this node and all its descendants"):
-            node_id = display_node['id']
-            logger.info(f"Deleting node {node_id} via direct button click")
-            
-            # Save state before deletion
-            save_state_to_history()
-            
-            # Get all nodes
-            ideas = get_ideas()
-            
-            # Remove node and its descendants
-            to_remove = set()
-            
-            def collect_descendants(nid):
-                to_remove.add(nid)
-                for child in [n for n in ideas if n.get('parent') == nid]:
-                    collect_descendants(child['id'])
-            
-            collect_descendants(node_id)
-            set_ideas([n for n in ideas if n['id'] not in to_remove])
-            
-            # Update central node if needed
-            if get_central() in to_remove:
-                new_central = next((n['id'] for n in ideas if n['id'] not in to_remove), None)
-                set_central(new_central)
-            
-            logger.info(f"Deleted node {node_id} and {len(to_remove)-1} descendants")
-            save_data(get_store())
-            st.rerun()
-
         # Display node details
         if display_node.get('tag'):
             st.write(f"**Tag:** {display_node['tag']}")
@@ -1776,157 +1607,104 @@ try:
                 }
             }
 
+            // Helper to process a message no matter how it was received
+            function processMessage(action, payload) {
+                try {
+                    if (!action) {
+                        parentDebugLog('No action provided');
+                        return;
+                    }
+                    
+                    parentDebugLog('Processing message: ' + action);
+                    
+                    // Store in session or local storage as backup
+                    try {
+                        localStorage.setItem('last_message_action', action);
+                        localStorage.setItem('last_message_payload', JSON.stringify(payload));
+                        localStorage.setItem('last_message_time', new Date().toISOString());
+                    } catch (e) {
+                        parentDebugLog('Failed to store in localStorage: ' + e.message);
+                    }
+                    
+                    // Set URL parameters
+                    var params = new URLSearchParams(window.location.search);
+                    params.set('action', action);
+                    params.set('payload', JSON.stringify(payload));
+                    
+                    // Update URL without navigation
+                    try {
+                        window.history.pushState({}, '', window.location.pathname + '?' + params.toString());
+                        parentDebugLog('URL updated with parameters');
+                    } catch (e) {
+                        parentDebugLog('Failed to update URL: ' + e.message);
+                    }
+                    
+                    // Force a page reload to process the message
+                    parentDebugLog('Reloading page to process message');
+                    setTimeout(function() {
+                        location.reload();
+                    }, 100);
+                } catch (e) {
+                    parentDebugLog('Error processing message: ' + e.message);
+                    console.error(e);
+                }
+            }
+
             // Listen for messages from the iframe
             window.addEventListener('message', function(event) {
-                console.log('Received message:', event.data);
-                parentDebugLog('Received message: ' + JSON.stringify(event.data));
+                console.log('Received message event', event);
+                parentDebugLog('Received message: ' + JSON.stringify(event.data).substring(0, 50) + '...');
                 
-                // Check if message is from our network canvas - handle both formats
+                // Check if message has the right format
                 if (event.data) {
                     try {
-                        // Get the action and payload - handle both message formats
-                        var action, payload;
+                        let action, payload;
                         
-                        if (event.data.source === 'network_canvas') {
-                            // Format from direct canvas handlers
+                        // Try multiple known formats
+                        if (event.data.source === 'network_canvas' && event.data.action) {
+                            // Standard format
                             action = event.data.action;
                             payload = event.data.payload;
-                            parentDebugLog('Processing network_canvas message: ' + action);
+                            parentDebugLog('Recognized standard format message');
                         } else if (event.data.action) {
                             // Alternative format
                             action = event.data.action;
                             payload = event.data.payload;
-                            parentDebugLog('Processing alternative format message: ' + action);
-                        } else {
-                            parentDebugLog('Unknown message format, ignoring');
-                            return;
-                        }
-                        
-                        parentDebugLog('Processing: ' + action + ' at (' + 
-                            (payload && payload.x ? payload.x.toFixed(1) : 'unknown') + ', ' + 
-                            (payload && payload.y ? payload.y.toFixed(1) : 'unknown') + ')');
-                        
-                        // Manual URL parameter update approach
-                        try {
-                            // Create URL parameters directly
-                            var baseUrl = window.location.pathname;
-                            var newParams = new URLSearchParams();
-                            newParams.set('action', action);
-                            
-                            // Make sure to preserve all payload fields for coordinate calculations
-                            if (payload) {
-                                // Add canvas dimensions if missing
-                                if (payload.x !== undefined && payload.y !== undefined) {
-                                    if (payload.canvasWidth === undefined || payload.canvasHeight === undefined) {
-                                        // Find the iframe that contains the network
-                                        var iframes = document.querySelectorAll('iframe');
-                                        for (var i = 0; i < iframes.length; i++) {
-                                            try {
-                                                if (iframes[i].contentWindow && 
-                                                    iframes[i].contentWindow.document && 
-                                                    iframes[i].contentWindow.document.getElementById('mynetwork')) {
-                                                    var rect = iframes[i].getBoundingClientRect();
-                                                    payload.canvasWidth = rect.width;
-                                                    payload.canvasHeight = rect.height;
-                                                    parentDebugLog('Added canvas dimensions: ' + rect.width + 'x' + rect.height);
-                                                    break;
-                                                }
-                                            } catch (e) {
-                                                // Ignore cross-origin errors
-                                            }
-                                        }
+                            parentDebugLog('Recognized alternative format message');
+                        } else if (typeof event.data === 'object') {
+                            // Try to infer format
+                            if (event.data.type && event.data.payload) {
+                                action = event.data.type;
+                                payload = event.data.payload;
+                                parentDebugLog('Inferred message format from type/payload');
+                            } else if (event.data.canvas_click || event.data.canvas_dblclick || event.data.canvas_contextmenu) {
+                                // Event-named format
+                                const keys = Object.keys(event.data);
+                                for (const key of keys) {
+                                    if (key.startsWith('canvas_')) {
+                                        action = key;
+                                        payload = event.data[key];
+                                        break;
                                     }
                                 }
+                                parentDebugLog('Inferred message from event-named keys');
                             }
-                            
-                            newParams.set('payload', JSON.stringify(payload));
-                            
-                            var newUrl = baseUrl + '?' + newParams.toString();
-                            parentDebugLog('Setting URL to: ' + newUrl);
-                            
-                            // Force reload with the new URL
-                            setTimeout(function() {
-                                window.location.href = newUrl;
-                            }, 100);
-                        } catch (urlError) {
-                            parentDebugLog('URL parameter setting failed: ' + urlError.message);
-                            // Last resort: reload the page to pick up cached messages
-                            setTimeout(function() { 
-                                location.reload(); 
-                            }, 200);
+                        }
+                        
+                        if (action) {
+                            processMessage(action, payload);
+                        } else {
+                            parentDebugLog('Could not determine message format: ' + JSON.stringify(event.data).substring(0, 100));
                         }
                     } catch (error) {
-                        console.error('Error processing message:', error);
                         parentDebugLog('ERROR in message processing: ' + error.message);
+                        console.error(error);
                     }
+                } else {
+                    parentDebugLog('Empty message received');
                 }
             });
-
-            // Add localStorage fallback listener
-            try {
-                parentDebugLog('Setting up localStorage listener');
-                window.addEventListener('storage', function(event) {
-                    if (event.key === 'mindmap_message') {
-                        try {
-                            parentDebugLog('Received message via localStorage');
-                            var data = JSON.parse(event.newValue);
-                            
-                            if (data && data.action) {
-                                parentDebugLog('Processing localStorage message: ' + data.action);
-                                
-                                // Process in the same way as postMessage
-                                var baseUrl = window.location.pathname;
-                                var newParams = new URLSearchParams();
-                                newParams.set('action', data.action);
-                                newParams.set('payload', JSON.stringify(data.payload));
-                                
-                                var newUrl = baseUrl + '?' + newParams.toString();
-                                parentDebugLog('Setting URL via localStorage: ' + newUrl);
-                                
-                                // Force reload with the new URL
-                                setTimeout(function() {
-                                    window.location.href = newUrl;
-                                }, 100);
-                            }
-                        } catch (e) {
-                            parentDebugLog('Error processing localStorage message: ' + e.message);
-                        }
-                    }
-                });
-                
-                // Check for any existing message in localStorage
-                if (window.localStorage && localStorage.getItem('mindmap_message')) {
-                    parentDebugLog('Found existing message in localStorage');
-                    try {
-                        var storedData = JSON.parse(localStorage.getItem('mindmap_message'));
-                        if (storedData && storedData.action) {
-                            parentDebugLog('Processing stored message: ' + storedData.action);
-                            
-                            // Process the stored message
-                            var baseUrl = window.location.pathname;
-                            var newParams = new URLSearchParams();
-                            newParams.set('action', storedData.action);
-                            newParams.set('payload', JSON.stringify(storedData.payload));
-                            
-                            var newUrl = baseUrl + '?' + newParams.toString();
-                            parentDebugLog('Setting URL from stored message: ' + newUrl);
-                            
-                            // Force reload with the new URL
-                            setTimeout(function() {
-                                window.location.href = newUrl;
-                            }, 100);
-                            
-                            // Clear the stored message after processing
-                            localStorage.removeItem('mindmap_message');
-                        }
-                    } catch (e) {
-                        parentDebugLog('Error processing stored message: ' + e.message);
-                    }
-                }
-            } catch (storageError) {
-                parentDebugLog('localStorage listener setup failed: ' + storageError.message);
-            }
-
+            
             parentDebugLog('Parent handler initialized successfully');
         } catch (setupError) {
             console.error('Critical error in parent handler setup:', setupError);
@@ -1938,161 +1716,28 @@ try:
     # Add the Streamlit JS to the page
     st.components.v1.html(streamlit_js, height=0)
 
-    # Add a simple namespace check for Streamlit to avoid the syntax error
-    streamlit_namespace_fix = """
-    <script>
-    // Fix for the "Uncaught SyntaxError: Unexpected identifier 'Streamlit'" error
-    // Check if Streamlit exists before using it
-    if (typeof window.Streamlit === 'undefined') {
-        window.Streamlit = { 
-            setComponentValue: function() { console.log('Streamlit mock: setComponentValue called'); },
-            setComponentReady: function() { console.log('Streamlit mock: setComponentReady called'); },
-            receiveMessageFromPython: function() { console.log('Streamlit mock: receiveMessageFromPython called'); }
-        };
-        console.log('Created Streamlit namespace mock to prevent errors');
-    }
-    </script>
-    """
-    st.components.v1.html(streamlit_namespace_fix, height=0)
-
-    # Add an option in the debug tools to switch to direct click mode
-    with st.expander("Debug Tools", expanded=True):
-        st.write("These tools help diagnose canvas communication issues")
-        
-        # Enable direct click mode
-        if 'direct_click_mode' not in st.session_state:
-            st.session_state.direct_click_mode = True
-        
-        st.session_state.direct_click_mode = st.checkbox(
-            "Enable Direct Click Mode (recommended)", 
-            value=st.session_state.direct_click_mode,
-            help="When enabled, clicks are processed using a simple coordinate-based approach instead of network events"
+    # Include our custom utils.js file to fix the Streamlit namespace error
+    with open("src/utils.js", "r") as f:
+        utils_js = f.read()
+        st.components.v1.html(
+            f"""
+            <script type="text/javascript">
+            // Immediately define Streamlit namespace to prevent errors
+            if (typeof window.Streamlit === 'undefined') {{
+                window.Streamlit = {{ 
+                    setComponentValue: function() {{ console.log('Streamlit mock: setComponentValue called'); }},
+                    setComponentReady: function() {{ console.log('Streamlit mock: setComponentReady called'); }},
+                    receiveMessageFromPython: function() {{ console.log('Streamlit mock: receiveMessageFromPython called'); }}
+                }};
+                console.log('Created Streamlit namespace mock to prevent errors');
+            }}
+            </script>
+            <script type="text/javascript" defer>
+            {utils_js}
+            </script>
+            """, 
+            height=0
         )
-        
-        # Display last message information
-        st.write("### Communication Status")
-        if 'last_action' not in st.session_state:
-            st.session_state.last_action = None
-            st.session_state.last_payload = None
-            st.session_state.last_message_time = None
-        
-        if action:
-            # Update last message info
-            st.session_state.last_action = action
-            st.session_state.last_payload = payload_str
-            st.session_state.last_message_time = datetime.datetime.now().strftime("%H:%M:%S")
-        
-        # Display status information
-        status_col1, status_col2 = st.columns(2)
-        
-        with status_col1:
-            st.write("**Last Action:**")
-            st.code(st.session_state.last_action or "None")
-            
-            st.write("**Time Received:**")
-            st.code(st.session_state.last_message_time or "None")
-        
-        with status_col2:
-            st.write("**Last Payload:**")
-            st.code(st.session_state.last_payload or "None", language="json")
-        
-        # Add a button to clear query parameters
-        if st.button("Clear URL Parameters"):
-            st.experimental_set_query_params()
-            st.success("URL parameters cleared")
-            st.rerun()
-        
-        # Node test section
-        st.write("### Node Testing")
-        col1, col2 = st.columns(2)
-        with col1:
-            node_id_for_test = st.number_input("Node ID for test", value=1, min_value=0)
-        
-        with col2:
-            test_action = st.selectbox("Test action", ["select_node", "center_node", "edit_modal", "delete"])
-        
-        if st.button("Send Test Message"):
-            # Use session_state to simulate a message
-            if test_action == "select_node" or test_action == "center_node":
-                st.session_state.selected_node = node_id_for_test
-                st.session_state.show_node_details = True
-                st.session_state.center_node_id = node_id_for_test
-                set_central(node_id_for_test)
-            elif test_action == "edit_modal":
-                st.session_state['edit_node'] = node_id_for_test
-            elif test_action == "delete":
-                ideas = get_ideas()
-                node = next((n for n in ideas if n['id'] == node_id_for_test), None)
-                if node:
-                    # Save state before deletion
-                    save_state_to_history()
-                    # Remove node and its descendants
-                    to_remove = set()
-                    
-                    def collect_descendants(nid):
-                        to_remove.add(nid)
-                        for child in [n for n in ideas if n.get('parent') == nid]:
-                            collect_descendants(child['id'])
-                    
-                    collect_descendants(node_id_for_test)
-                    set_ideas([n for n in ideas if n['id'] not in to_remove])
-                    if get_central() in to_remove:
-                        set_central(None)
-            
-            # Log the test action
-            logger.info(f"Test message sent via debug button: {test_action}, node ID: {node_id_for_test}")
-            st.success(f"Test message sent: {test_action}, node ID: {node_id_for_test}")
-            st.rerun()
-
-    # Add a mechanism to preserve message history in localStorage
-    message_history_backup = """
-    <script>
-    // Backup and restore message history using localStorage to preserve across reloads
-    (function() {
-        const MESSAGE_HISTORY_KEY = 'mindmap_message_history';
-        
-        // Function to save message history to localStorage
-        function saveMessageHistory() {
-            try {
-                // Look for Streamlit's message history in the DOM
-                const debugLogContent = document.querySelector('[data-testid="stExpander"] [data-testid="stMarkdownContainer"]');
-                if (debugLogContent && debugLogContent.textContent.includes('Message History')) {
-                    // Message history exists, store that we've seen messages
-                    localStorage.setItem(MESSAGE_HISTORY_KEY, 'has_messages');
-                    console.log('Marked message history as existing');
-                }
-            } catch (e) {
-                console.error('Error saving message history:', e);
-            }
-        }
-        
-        // Wait for page to load
-        window.addEventListener('load', function() {
-            // Schedule check for messages
-            setTimeout(saveMessageHistory, 2000);
-            
-            // Check for message history flag and force reload if missing
-            const hasQueryParam = window.location.search.includes('action=');
-            const hasMessages = localStorage.getItem(MESSAGE_HISTORY_KEY) === 'has_messages';
-            
-            console.log('Page loaded. Has query param:', hasQueryParam, 'Has messages:', hasMessages);
-            
-            if (hasQueryParam && !hasMessages) {
-                console.log('Query parameter present but message history missing - reloading to refresh state');
-                // Clear the flag so we don't enter a loop
-                localStorage.removeItem(MESSAGE_HISTORY_KEY);
-                // Force a reload after delay to let the page render
-                setTimeout(function() {
-                    window.location.reload();
-                }, 1000);
-            }
-        });
-    })();
-    </script>
-    """
-    
-    # Add the history backup script
-    st.components.v1.html(message_history_backup, height=0)
 
 except Exception as e:
     logger.error(f"Unhandled exception: {str(e)}")
