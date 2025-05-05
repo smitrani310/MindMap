@@ -4,6 +4,7 @@ import logging
 from src.state import get_ideas, get_central, set_central, get_next_id, increment_next_id, add_idea, set_ideas, get_store, save_data
 from src.history import save_state_to_history, perform_undo, perform_redo
 from src.utils import recalc_size
+from src.message_format import Message, validate_message, create_response_message
 
 logger = logging.getLogger(__name__)
 
@@ -46,83 +47,114 @@ def is_circular(child_id, parent_id, nodes):
     return False
 
 def handle_message(msg_data):
-    """Handle messages from the client."""
+    """Handle messages from the client using standardized message format."""
     try:
-        # Validate required fields
-        if not isinstance(msg_data, dict) or 'type' not in msg_data or 'payload' not in msg_data:
+        # Validate message format
+        if not validate_message(msg_data):
             logger.error(f"Invalid message format: {msg_data}")
-            return
-            
-        action, pl = msg_data['type'], msg_data['payload']
+            return create_response_message(
+                Message.from_dict(msg_data),
+                'failed',
+                'Invalid message format'
+            )
+
+        # Convert to Message object
+        message = Message.from_dict(msg_data)
+        logger.info(f"Processing message: {message.action} (ID: {message.message_id})")
+
+        # Get current ideas
         ideas = get_ideas()
         
-        if action == 'undo':
+        # Process different action types
+        if message.action == 'undo':
             if perform_undo():
                 st.rerun()
-        elif action == 'redo':
+            return create_response_message(message, 'completed')
+            
+        elif message.action == 'redo':
             if perform_redo():
                 st.rerun()
-        elif action == 'pos':
-            save_state_to_history()
-            position_updated = False
-            for k, v in pl.items():
-                try:
-                    node_id = int(k)
-                    node = next((n for n in ideas if n['id'] == node_id), None)
-                    if node:
-                        # Validate position data
-                        if isinstance(v, dict) and 'x' in v and 'y' in v:
-                            node['x'], node['y'] = v['x'], v['y']
-                            position_updated = True
-                        else:
-                            logger.warning(f"Invalid position data: {v}")
-                except (ValueError, TypeError) as e:
-                    logger.error(f"Invalid node ID or position: {k} -> {v}")
-                    st.error(f"Invalid node ID: {k}")
+            return create_response_message(message, 'completed')
             
-            # Save position changes to data file
-            if position_updated:
-                logger.debug("Saving node position changes")
-                save_data(get_store())
-        elif action == 'edit_modal':
+        elif message.action == 'pos':
             try:
-                node_id = int(pl['id'])
+                save_state_to_history()
+                position_updated = False
+                for k, v in message.payload.items():
+                    try:
+                        node_id = int(k)
+                        node = next((n for n in ideas if n['id'] == node_id), None)
+                        if node:
+                            # Validate position data
+                            if isinstance(v, dict) and 'x' in v and 'y' in v:
+                                node['x'], node['y'] = v['x'], v['y']
+                                position_updated = True
+                            else:
+                                logger.warning(f"Invalid position data: {v}")
+                    except (ValueError, TypeError) as e:
+                        logger.error(f"Invalid node ID or position: {k} -> {v}")
+                        st.error(f"Invalid node ID: {k}")
+                
+                # Save position changes to data file
+                if position_updated:
+                    logger.debug("Saving node position changes")
+                    save_data(get_store())
+                return create_response_message(message, 'completed')
+            except Exception as e:
+                logger.error(f"Error processing position update: {str(e)}")
+                return create_response_message(message, 'failed', str(e))
+                
+        elif message.action == 'edit_modal':
+            try:
+                node_id = int(message.payload['id'])
                 if node_id in {n['id'] for n in ideas}:
                     st.session_state['edit_node'] = node_id
                     st.rerun()
+                    return create_response_message(message, 'completed')
                 else:
                     logger.warning(f"Edit request for nonexistent node: {node_id}")
+                    return create_response_message(message, 'failed', 'Node not found')
             except (ValueError, TypeError, KeyError) as e:
-                logger.error(f"Invalid edit modal request: {pl}")
-        elif action == 'select_node':
+                logger.error(f"Invalid edit modal request: {message.payload}")
+                return create_response_message(message, 'failed', str(e))
+                
+        elif message.action == 'select_node':
             try:
-                node_id = int(pl['id'])
+                node_id = int(message.payload['id'])
                 logger.info(f"Processing select_node action for node ID: {node_id}")
                 if node_id in {n['id'] for n in ideas}:
                     logger.info(f"Node {node_id} found, setting as selected node")
                     st.session_state['selected_node'] = node_id
                     st.rerun()
+                    return create_response_message(message, 'completed')
                 else:
                     logger.warning(f"Select request for nonexistent node: {node_id}")
+                    return create_response_message(message, 'failed', 'Node not found')
             except (ValueError, TypeError, KeyError) as e:
-                logger.error(f"Invalid select node request: {pl}, Error: {str(e)}")
-        elif action == 'center_node':
+                logger.error(f"Invalid select node request: {message.payload}")
+                return create_response_message(message, 'failed', str(e))
+                
+        elif message.action == 'center_node':
             try:
-                node_id = int(pl['id'])
+                node_id = int(message.payload['id'])
                 if node_id in {n['id'] for n in ideas}:
                     set_central(node_id)
                     st.rerun()
+                    return create_response_message(message, 'completed')
                 else:
                     logger.warning(f"Center request for nonexistent node: {node_id}")
+                    return create_response_message(message, 'failed', 'Node not found')
             except (ValueError, TypeError, KeyError) as e:
-                logger.error(f"Invalid center node request: {pl}")
-        elif action == 'delete':
+                logger.error(f"Invalid center node request: {message.payload}")
+                return create_response_message(message, 'failed', str(e))
+                
+        elif message.action == 'delete':
             try:
                 save_state_to_history()
-                node_id = int(pl['id'])
+                node_id = int(message.payload['id'])
                 if node_id not in {n['id'] for n in ideas}:
                     logger.warning(f"Delete request for nonexistent node: {node_id}")
-                    return
+                    return create_response_message(message, 'failed', 'Node not found')
                     
                 to_remove = set()
                 def collect_descendants(node_id):
@@ -147,29 +179,30 @@ def handle_message(msg_data):
                 save_data(get_store())
                     
                 st.rerun()
+                return create_response_message(message, 'completed')
             except (ValueError, TypeError, KeyError) as e:
-                logger.error(f"Invalid delete request: {pl}")
-        elif action == 'reparent':
+                logger.error(f"Invalid delete request: {message.payload}")
+                return create_response_message(message, 'failed', str(e))
+        elif message.action == 'reparent':
             try:
                 save_state_to_history()
-                child_id = int(pl['id'])
-                parent_id = int(pl['parent'])
+                child_id = int(message.payload['id'])
+                parent_id = int(message.payload['parent'])
                 
                 # Validate that both nodes exist
                 if child_id not in {n['id'] for n in ideas}:
                     logger.warning(f"Reparent request for nonexistent child: {child_id}")
-                    return
+                    return create_response_message(message, 'failed', 'Child node not found')
                 
                 if parent_id not in {n['id'] for n in ideas}:
                     logger.warning(f"Reparent request for nonexistent parent: {parent_id}")
-                    return
+                    return create_response_message(message, 'failed', 'Parent node not found')
                 
                 child = next((n for n in ideas if n['id'] == child_id), None)
                 
                 if is_circular(child_id, parent_id, ideas):
                     logger.warning(f"Circular reference detected: {child_id} -> {parent_id}")
-                    st.warning("Cannot create circular parent-child relationships")
-                    return
+                    return create_response_message(message, 'failed', 'Cannot create circular parent-child relationships')
                     
                 child['parent'] = parent_id
                 if not child.get('edge_type'):
@@ -180,21 +213,23 @@ def handle_message(msg_data):
                 save_data(get_store())
                     
                 st.rerun()
+                return create_response_message(message, 'completed')
             except (ValueError, TypeError, KeyError) as e:
-                logger.error(f"Invalid reparent request: {pl}")
-        elif action == 'new_node':
+                logger.error(f"Invalid reparent request: {message.payload}")
+                return create_response_message(message, 'failed', str(e))
+        elif message.action == 'new_node':
             try:
                 save_state_to_history()
                 central = get_central()
                 
                 # Validate label
-                if not pl.get('label'):
+                if not message.payload.get('label'):
                     logger.warning("New node request with empty label")
-                    return
+                    return create_response_message(message, 'failed', 'New node request with empty label')
                     
                 new_node = {
                     'id': get_next_id(),
-                    'label': pl['label'].strip(),
+                    'label': message.payload['label'].strip(),
                     'description': '',
                     'urgency': 'medium',
                     'tag': '',
@@ -212,9 +247,14 @@ def handle_message(msg_data):
                 save_data(get_store())
                 
                 st.rerun()
+                return create_response_message(message, 'completed')
             except (KeyError, ValueError) as e:
-                logger.error(f"Invalid new node request: {pl}")
+                logger.error(f"Invalid new node request: {message.payload}")
+                return create_response_message(message, 'failed', str(e))
         else:
-            logger.warning(f"Unknown action type: {action}")
+            logger.warning(f"Unknown action type: {message.action}")
+            return create_response_message(message, 'failed', 'Unknown action type')
+            
     except Exception as e:
-        handle_exception(e) 
+        logger.error(f"Error processing message: {str(e)}")
+        return create_response_message(message, 'failed', str(e)) 

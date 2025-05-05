@@ -24,6 +24,7 @@ import logging
 import colorsys
 from typing import List, Dict, Optional, Tuple, Set
 from copy import deepcopy
+import atexit
 
 import streamlit as st
 from pyvis.network import Network
@@ -43,6 +44,8 @@ from src.history import save_state_to_history, can_undo, can_redo, perform_undo,
 from src.utils import hex_to_rgb, get_theme, recalc_size, get_edge_color, get_urgency_color, get_tag_color
 from src.themes import THEMES, TAGS, URGENCY_SIZE
 from src.handlers import handle_message, handle_exception, is_circular
+from src.message_queue import message_queue
+from src.message_format import Message, validate_message, create_response_message
 
 # Configure logging
 import os
@@ -1743,3 +1746,32 @@ except Exception as e:
     logger.error(f"Unhandled exception: {str(e)}")
     logger.error(traceback.format_exc())
     handle_exception(e)
+
+def handle_message_with_queue(message: Message) -> None:
+    """Handle a message using the message queue."""
+    try:
+        # Process the message
+        response = handle_message(message.to_dict())
+        
+        # Send response back to frontend
+        if response:
+            response_message = Message.from_dict(response)
+            st.session_state['last_response'] = response_message.to_json()
+            st.rerun()
+            
+    except Exception as e:
+        logger.error(f"Error handling message: {str(e)}")
+        response = create_response_message(message, 'failed', str(e))
+        st.session_state['last_response'] = response.to_json()
+        st.rerun()
+
+# Initialize message queue
+message_queue.start(handle_message_with_queue)
+
+# Add cleanup on app shutdown
+def cleanup():
+    """Clean up resources when the app is shutting down."""
+    message_queue.stop()
+
+# Register cleanup
+atexit.register(cleanup)

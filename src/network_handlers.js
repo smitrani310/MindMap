@@ -1,4 +1,5 @@
 // Network interaction handlers for the Enhanced Mind Map
+import { messageUtils } from './message_utils';
 
 // Function to send logs to Python
 function sendLog(level, message, data = null) {
@@ -23,170 +24,117 @@ function sendLog(level, message, data = null) {
     }
 }
 
-function initializeNetworkHandlers(network, searchQuery) {
-    if (window.debugToCanvas) {
-        window.debugToCanvas('initializeNetworkHandlers called with network: ' + (network ? 'Yes' : 'No'));
-    }
+// Initialize network handlers
+export function initializeNetworkHandlers() {
+    // Set up message event listener
+    window.addEventListener('message', handleIncomingMessage);
     
-    sendLog('info', 'Initializing network handlers...', {
-        networkExists: !!network,
-        networkId: network?.id,
-        searchQuery: searchQuery
-    });
-    
-    // Create a hidden form for message passing
-    const formDiv = document.createElement('div');
-    formDiv.style.display = 'none';
-    formDiv.innerHTML = `
-        <form id="message-form" action="" method="get">
-            <input type="hidden" id="message-type" name="action" value="">
-            <input type="hidden" id="message-payload" name="payload" value="">
-            <button type="submit" id="message-submit">Submit</button>
-        </form>
-    `;
-    document.body.appendChild(formDiv);
-    sendLog('debug', 'Message form created and appended to body');
+    // Initialize message handling
+    messageUtils.initializeMessageHandling();
+}
 
-    // Message passing via form submission
-    function send(action, payload) {
-        if (window.debugToCanvas) {
-            window.debugToCanvas(`Sending message: ${action}`);
+// Handle incoming messages from the backend
+function handleIncomingMessage(event) {
+    try {
+        const message = messageUtils.validateMessage(event.data);
+        if (!message) {
+            console.error('Invalid message received:', event.data);
+            return;
         }
-        
-        sendLog('debug', 'Attempting to send message:', {action, payload});
-        try {
-            const form = document.getElementById('message-form');
-            const typeInput = document.getElementById('message-type');
-            const payloadInput = document.getElementById('message-payload');
-            
-            sendLog('debug', 'Form elements found:', {
-                form: !!form,
-                typeInput: !!typeInput,
-                payloadInput: !!payloadInput
-            });
-            
-            if (!form || !typeInput || !payloadInput) {
-                throw new Error('Required form elements not found');
-            }
-            
-            typeInput.value = action;
-            payloadInput.value = JSON.stringify(payload);
-            sendLog('debug', 'Form values set:', {
-                action: typeInput.value,
-                payload: payloadInput.value
-            });
-            
-            form.submit();
-            sendLog('debug', 'Form submitted successfully');
-        } catch (error) {
-            sendLog('error', 'Failed to send message:', error);
+
+        // Handle different message statuses
+        switch (message.status) {
+            case 'completed':
+                console.log(`Message ${message.message_id} completed successfully`);
+                break;
+            case 'failed':
+                console.error(`Message ${message.message_id} failed:`, message.error);
+                // Show error to user if needed
+                break;
+            case 'processing':
+                console.log(`Message ${message.message_id} is being processed`);
+                break;
+            default:
+                console.warn(`Unknown message status: ${message.status}`);
         }
+    } catch (error) {
+        console.error('Error handling incoming message:', error);
     }
+}
 
-    // Initialize physics
-    network.once('afterDrawing', () => {
-        sendLog('info', 'Network drawing complete, stabilizing...');
-        network.stabilize(100);
+// Send node position updates
+export function sendNodePosition(nodeId, position) {
+    const message = messageUtils.createMessage('pos', {
+        [nodeId]: position
     });
+    messageUtils.sendMessage(message);
+}
 
-    // Handle node dragging
-    network.on('dragEnd', (params) => {
-        sendLog('debug', 'Drag end event:', {
-            nodes: params.nodes,
-            event: params.event,
-            pointer: params.pointer
-        });
-        if (params.nodes.length === 1) {
-            const pos = {};
-            const id = params.nodes[0];
-            const position = network.getPositions([id])[id];
-            pos[id] = position;
-            send('pos', pos);
-        }
+// Send node selection
+export function sendNodeSelection(nodeId) {
+    const message = messageUtils.createMessage('select_node', {
+        id: nodeId
     });
+    messageUtils.sendMessage(message);
+}
 
-    // Click for node details
-    network.on('click', (params) => {
-        if (window.debugToCanvas) {
-            window.debugToCanvas(`Click event received on ${params.nodes.length} nodes`);
-        }
-        
-        sendLog('debug', 'Click event received:', {
-            nodes: params.nodes,
-            event: params.event,
-            pointer: params.pointer,
-            networkState: {
-                selectedNodes: network.getSelectedNodes(),
-                isStabilized: network.isStabilized()
-            }
-        });
-        
-        if (params.nodes.length === 1) {
-            const id = params.nodes[0];
-            sendLog('info', 'Node clicked, sending messages for node:', id);
-            // Directly show on canvas for debugging
-            if (window.debugToCanvas) {
-                window.debugToCanvas(`CLICK: Node ${id} selected, sending messages`);
-            }
-            send('select_node', { id });
-            send('center_node', { id });
-        } else {
-            sendLog('debug', 'Click event received but no node was clicked');
-        }
+// Send node centering
+export function sendNodeCentering(nodeId) {
+    const message = messageUtils.createMessage('center_node', {
+        id: nodeId
     });
+    messageUtils.sendMessage(message);
+}
 
-    // Double-click for edit
-    network.on('doubleClick', (params) => {
-        sendLog('debug', 'Double click event:', {
-            nodes: params.nodes,
-            event: params.event,
-            pointer: params.pointer
-        });
-        if (params.nodes.length === 1) {
-            const id = params.nodes[0];
-            send('edit_modal', { id });
-        }
+// Send node editing
+export function sendNodeEditing(nodeId) {
+    const message = messageUtils.createMessage('edit_modal', {
+        id: nodeId
     });
+    messageUtils.sendMessage(message);
+}
 
-    // Context menu for delete
-    network.on('contextmenu', (params) => {
-        sendLog('debug', 'Context menu event:', {
-            nodes: params.nodes,
-            event: params.event,
-            pointer: params.pointer
-        });
-        params.event.preventDefault();
-        if (params.nodes.length === 1) {
-            const id = params.nodes[0];
-            if (confirm('Delete this bubble?')) {
-                send('delete', { id: id });
-            }
-        }
-        return false;
+// Send node deletion
+export function sendNodeDeletion(nodeId) {
+    const message = messageUtils.createMessage('delete', {
+        id: nodeId
     });
+    messageUtils.sendMessage(message);
+}
 
-    // Log all attached event listeners
-    sendLog('debug', 'Network event listeners:', {
-        listeners: network._eventListeners ? Object.keys(network._eventListeners) : [],
-        networkState: {
-            isStabilized: network.isStabilized(),
-            selectedNodes: network.getSelectedNodes(),
-            nodeCount: network.body.data.nodes.length
-        }
+// Send node reparenting
+export function sendNodeReparenting(childId, parentId) {
+    const message = messageUtils.createMessage('reparent', {
+        id: childId,
+        parent: parentId
     });
+    messageUtils.sendMessage(message);
+}
 
-    // Search highlight
-    if (searchQuery) {
-        sendLog('info', 'Applying search highlight for:', searchQuery);
-        const nodes = network.body.data.nodes;
-        nodes.forEach((n) => {
-            if (n.label.toLowerCase().includes(searchQuery.toLowerCase())) {
-                n.color = { background: 'yellow', border: 'orange' };
-            }
-        });
-    }
+// Send new node creation
+export function sendNewNode(label, parentId = null) {
+    const message = messageUtils.createMessage('new_node', {
+        label: label,
+        parent: parentId
+    });
+    messageUtils.sendMessage(message);
+}
 
-    sendLog('info', 'Network handlers initialized successfully');
+// Send undo action
+export function sendUndo() {
+    const message = messageUtils.createMessage('undo', {});
+    messageUtils.sendMessage(message);
+}
+
+// Send redo action
+export function sendRedo() {
+    const message = messageUtils.createMessage('redo', {});
+    messageUtils.sendMessage(message);
+}
+
+// Clean up network handlers
+export function cleanupNetworkHandlers() {
+    window.removeEventListener('message', handleIncomingMessage);
 }
 
 // Wait for the network to be available
@@ -210,7 +158,7 @@ function waitForNetwork() {
                 window.debugToCanvas(`SUCCESS: Network found via window.visNetwork on attempt ${attempts}`);
             }
             clearInterval(checkInterval);
-            initializeNetworkHandlers(window.visNetwork, window.searchQuery);
+            initializeNetworkHandlers();
             return;
         }
         
@@ -229,7 +177,7 @@ function waitForNetwork() {
                             window.debugToCanvas(`SUCCESS: Network found in canvas on attempt ${attempts}`);
                         }
                         clearInterval(checkInterval);
-                        initializeNetworkHandlers(canvasElements[i].network, window.searchQuery);
+                        initializeNetworkHandlers();
                         return;
                     }
                 }
@@ -251,7 +199,7 @@ function waitForNetwork() {
                             obj.canvas && 
                             typeof obj.on === 'function') {
                             window.debugToCanvas(`FOUND NETWORK-LIKE OBJECT AT window.${key}, using it`);
-                            initializeNetworkHandlers(obj, window.searchQuery);
+                            initializeNetworkHandlers();
                             return;
                         }
                     } catch (e) {
@@ -277,7 +225,7 @@ function forceNetworkAccess() {
         if (window.debugToCanvas) {
             window.debugToCanvas("SUCCESS: Network found at window.visNetwork");
         }
-        initializeNetworkHandlers(window.visNetwork, window.searchQuery);
+        initializeNetworkHandlers();
         return true;
     }
     
@@ -296,7 +244,7 @@ function forceNetworkAccess() {
                     window.debugToCanvas("SUCCESS: Network instance found via vis.network.instances");
                 }
                 window.visNetwork = networkInstance;
-                initializeNetworkHandlers(networkInstance, window.searchQuery);
+                initializeNetworkHandlers();
                 return true;
             }
         }
