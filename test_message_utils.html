@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Message Utils Test</title>
+    <script src="src/message_utils.js"></script>
+</head>
+<body>
+    <h1>Message Utils Test</h1>
+    <div id="output"></div>
+    <button onclick="testMessageUtils()">Run Tests</button>
+
+    <script>
+        function log(message) {
+            const output = document.getElementById('output');
+            output.innerHTML += message + '<br>';
+            console.log(message);
+        }
+
+        function testMessageUtils() {
+            try {
+                // Test message creation
+                const message = messageUtils.createMessage('test', 'test_action', {test: 'data'});
+                log('Created message: ' + JSON.stringify(message));
+
+                // Test message validation
+                const isValid = messageUtils.validateMessage(message);
+                log('Message validation: ' + isValid);
+
+                // Test message sending
+                const sent = messageUtils.sendMessage('test', 'test_action', {test: 'data'});
+                log('Message sent: ' + sent);
+
+                // Test message handling
+                const testEvent = {
+                    data: message
+                };
+                messageUtils.handleIncomingMessage(testEvent);
+                log('Message handling test completed');
+
+                log('All tests completed successfully!');
+            } catch (error) {
+                log('Error: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html> 

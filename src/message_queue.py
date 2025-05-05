@@ -8,7 +8,7 @@ import threading
 import logging
 from typing import Dict, List, Optional, Callable
 from dataclasses import dataclass
-from src.message_format import Message
+from src.message_format import Message, create_response_message
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +30,9 @@ class MessageQueue:
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._worker_thread = None
-        self._callback: Optional[Callable[[Message], None]] = None
+        self._callback: Optional[Callable[[Message], Message]] = None
         
-    def start(self, callback: Callable[[Message], None]):
+    def start(self, callback: Callable[[Message], Message]):
         """Start the message queue worker thread."""
         if self._worker_thread is not None:
             logger.warning("Message queue worker thread already running")
@@ -86,7 +86,18 @@ class MessageQueue:
                 logger.error(f"Message {message_id} exceeded max retries")
                 del self._processing[message_id]
             else:
-                self._queue.append(queued)
+                # Create a new message for retry with the same content
+                new_message = Message.create(
+                    source=queued.message.source,
+                    action=queued.message.action,
+                    payload=queued.message.payload
+                )
+                new_queued = QueuedMessage(
+                    message=new_message,
+                    retry_count=queued.retry_count,
+                    last_retry_time=queued.last_retry_time
+                )
+                self._queue.append(new_queued)
                 del self._processing[message_id]
                 logger.info(f"Message {message_id} queued for retry {queued.retry_count}")
                 
@@ -117,12 +128,19 @@ class MessageQueue:
                 
             # Process message
             self._processing[queued.message.message_id] = queued
-            if self._callback:
-                try:
-                    self._callback(queued.message)
-                except Exception as e:
-                    logger.error(f"Error processing message {queued.message.message_id}: {str(e)}")
+            
+        # Release lock before calling callback
+        if self._callback:
+            try:
+                response = self._callback(queued.message)
+                if response and response.status == 'failed':
+                    logger.error(f"Message {queued.message.message_id} processing failed: {response.error}")
                     self.retry(queued.message.message_id)
+                else:
+                    self.acknowledge(queued.message.message_id)
+            except Exception as e:
+                logger.error(f"Error processing message {queued.message.message_id}: {str(e)}")
+                self.retry(queued.message.message_id)
 
 # Global message queue instance
 message_queue = MessageQueue() 
