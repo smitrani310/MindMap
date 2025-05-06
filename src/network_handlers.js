@@ -31,34 +31,110 @@ export function initializeNetworkHandlers() {
     
     // Initialize message handling
     messageUtils.initializeMessageHandling();
+    
+    // Add canvas event listeners
+    const networkDiv = document.getElementById('mynetwork');
+    if (networkDiv) {
+        // Add click handler
+        networkDiv.addEventListener('click', function(event) {
+            const rect = networkDiv.getBoundingClientRect();
+            const relX = event.clientX - rect.left;
+            const relY = event.clientY - rect.top;
+            
+            const message = messageUtils.createMessage('network_canvas', 'canvas_click', {
+                x: relX,
+                y: relY,
+                canvasWidth: rect.width,
+                canvasHeight: rect.height,
+                timestamp: Date.now()
+            });
+            
+            messageUtils.sendMessage(message);
+            sendLog('debug', 'Sent canvas click message', message);
+        });
+        
+        // Add double-click handler
+        networkDiv.addEventListener('dblclick', function(event) {
+            event.preventDefault();
+            
+            const rect = networkDiv.getBoundingClientRect();
+            const relX = event.clientX - rect.left;
+            const relY = event.clientY - rect.top;
+            
+            const message = messageUtils.createMessage('network_canvas', 'canvas_dblclick', {
+                x: relX,
+                y: relY,
+                canvasWidth: rect.width,
+                canvasHeight: rect.height,
+                timestamp: Date.now()
+            });
+            
+            messageUtils.sendMessage(message);
+            sendLog('debug', 'Sent canvas double-click message', message);
+        });
+        
+        // Add context menu handler
+        networkDiv.addEventListener('contextmenu', function(event) {
+            event.preventDefault();
+            
+            const rect = networkDiv.getBoundingClientRect();
+            const relX = event.clientX - rect.left;
+            const relY = event.clientY - rect.top;
+            
+            if (confirm('Delete this bubble?')) {
+                const message = messageUtils.createMessage('network_canvas', 'canvas_contextmenu', {
+                    x: relX,
+                    y: relY,
+                    canvasWidth: rect.width,
+                    canvasHeight: rect.height,
+                    timestamp: Date.now()
+                });
+                
+                messageUtils.sendMessage(message);
+                sendLog('debug', 'Sent canvas context menu message', message);
+            }
+            
+            return false;
+        });
+        
+        sendLog('info', 'Canvas event handlers initialized');
+    } else {
+        sendLog('error', 'Network div not found');
+    }
 }
 
 // Handle incoming messages from the backend
 function handleIncomingMessage(event) {
     try {
-        const message = messageUtils.validateMessage(event.data);
-        if (!message) {
-            console.error('Invalid message received:', event.data);
+        const message = event.data;
+        if (!message || !message.action) {
             return;
         }
-
-        // Handle different message statuses
-        switch (message.status) {
-            case 'completed':
-                console.log(`Message ${message.message_id} completed successfully`);
+        
+        sendLog('debug', 'Received message', message);
+        
+        // Handle different message types
+        switch (message.action) {
+            case 'view_node_response':
+                // Node was selected
+                sendLog('info', 'Node selected', message.payload);
                 break;
-            case 'failed':
-                console.error(`Message ${message.message_id} failed:`, message.error);
-                // Show error to user if needed
+                
+            case 'edit_node_response':
+                // Node is being edited
+                sendLog('info', 'Node being edited', message.payload);
                 break;
-            case 'processing':
-                console.log(`Message ${message.message_id} is being processed`);
+                
+            case 'delete_node_response':
+                // Node was deleted
+                sendLog('info', 'Node deleted', message.payload);
                 break;
+                
             default:
-                console.warn(`Unknown message status: ${message.status}`);
+                sendLog('warning', 'Unknown message type', message);
         }
     } catch (error) {
-        console.error('Error handling incoming message:', error);
+        sendLog('error', 'Error handling message', error);
     }
 }
 
@@ -135,6 +211,13 @@ export function sendRedo() {
 // Clean up network handlers
 export function cleanupNetworkHandlers() {
     window.removeEventListener('message', handleIncomingMessage);
+    
+    const networkDiv = document.getElementById('mynetwork');
+    if (networkDiv) {
+        networkDiv.removeEventListener('click', null);
+        networkDiv.removeEventListener('dblclick', null);
+        networkDiv.removeEventListener('contextmenu', null);
+    }
 }
 
 // Wait for the network to be available

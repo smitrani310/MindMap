@@ -1,21 +1,13 @@
 // Message utilities for the Enhanced Mind Map application
+import { v4 as uuidv4 } from 'uuid';
 
-// Generate a unique message ID
-function generateMessageId() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
-}
-
-// Create a standardized message object
+// Create a message with the standardized format
 function createMessage(source, action, payload) {
     return {
         source: source,
         action: action,
         payload: payload,
-        message_id: generateMessageId(),
+        message_id: uuidv4(),
         timestamp: Date.now(),
         status: 'pending'
     };
@@ -23,16 +15,57 @@ function createMessage(source, action, payload) {
 
 // Validate a message object
 function validateMessage(message) {
-    const requiredFields = ['source', 'action', 'payload', 'message_id', 'timestamp'];
-    return requiredFields.every(field => field in message);
+    try {
+        if (!message || typeof message !== 'object') {
+            console.error('Invalid message: not an object');
+            return false;
+        }
+
+        // Check required fields
+        const requiredFields = ['source', 'action', 'payload', 'message_id', 'timestamp'];
+        for (const field of requiredFields) {
+            if (!(field in message)) {
+                console.error(`Invalid message: missing ${field}`);
+                return false;
+            }
+        }
+
+        // Validate field types
+        if (typeof message.source !== 'string' || message.source.trim() === '') {
+            console.error('Invalid message: invalid source');
+            return false;
+        }
+
+        if (typeof message.action !== 'string' || message.action.trim() === '') {
+            console.error('Invalid message: invalid action');
+            return false;
+        }
+
+        if (typeof message.payload !== 'object') {
+            console.error('Invalid message: invalid payload');
+            return false;
+        }
+
+        if (typeof message.message_id !== 'string' || message.message_id.trim() === '') {
+            console.error('Invalid message: invalid message_id');
+            return false;
+        }
+
+        if (typeof message.timestamp !== 'number' || message.timestamp <= 0) {
+            console.error('Invalid message: invalid timestamp');
+            return false;
+        }
+
+        return true;
+    } catch (error) {
+        console.error('Error validating message:', error);
+        return false;
+    }
 }
 
 // Send a message using the standardized format
-function sendMessage(source, action, payload) {
+function sendMessage(message) {
     try {
-        // Create the message
-        const message = createMessage(source, action, payload);
-        
         // Validate the message
         if (!validateMessage(message)) {
             console.error('Invalid message format:', message);
@@ -113,7 +146,7 @@ function initializeMessageHandling() {
         if (storedMessage) {
             const message = JSON.parse(storedMessage);
             if (validateMessage(message)) {
-                sendMessage(message.source, message.action, message.payload);
+                sendMessage(message);
             }
             localStorage.removeItem('mindmap_message');
         }
@@ -124,9 +157,9 @@ function initializeMessageHandling() {
 
 // Export the functions
 window.messageUtils = {
-    sendMessage,
     createMessage,
     validateMessage,
+    sendMessage,
     handleIncomingMessage,
     initializeMessageHandling
 }; 

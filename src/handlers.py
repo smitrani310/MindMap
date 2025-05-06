@@ -66,7 +66,133 @@ def handle_message(msg_data):
         ideas = get_ideas()
         
         # Process different action types
-        if message.action == 'undo':
+        if message.action == 'canvas_click':
+            try:
+                # Extract click coordinates
+                click_x = message.payload.get('x', 0)
+                click_y = message.payload.get('y', 0)
+                canvas_width = message.payload.get('canvasWidth', 800)
+                canvas_height = message.payload.get('canvasHeight', 600)
+                
+                # Find the nearest node
+                closest_node = None
+                min_distance = float('inf')
+                
+                for node in ideas:
+                    if node.get('x') is not None and node.get('y') is not None:
+                        # Scale coordinates to match canvas
+                        node_x = (node['x'] + canvas_width/2)
+                        node_y = (node['y'] + canvas_height/2)
+                        
+                        # Calculate distance
+                        distance = ((node_x - click_x) ** 2 + (node_y - click_y) ** 2) ** 0.5
+                        
+                        if distance < min_distance:
+                            min_distance = distance
+                            closest_node = node
+                
+                # Use a threshold based on canvas dimensions
+                click_threshold = min(canvas_width, canvas_height) * 0.08
+                
+                if closest_node and min_distance <= click_threshold:
+                    # Select the node
+                    st.session_state['selected_node'] = closest_node['id']
+                    st.rerun()
+                    return create_response_message(message, 'completed')
+                else:
+                    logger.warning(f"No node found near click coordinates (closest: {closest_node['label'] if closest_node else 'None'} at distance: {min_distance:.2f}, threshold: {click_threshold:.2f})")
+                    return create_response_message(message, 'failed', 'No node found near click coordinates')
+                    
+            except Exception as e:
+                logger.error(f"Error processing canvas click: {str(e)}")
+                return create_response_message(message, 'failed', str(e))
+                
+        elif message.action == 'canvas_dblclick':
+            try:
+                # Extract click coordinates
+                click_x = message.payload.get('x', 0)
+                click_y = message.payload.get('y', 0)
+                canvas_width = message.payload.get('canvasWidth', 800)
+                canvas_height = message.payload.get('canvasHeight', 600)
+                
+                # Find the nearest node
+                closest_node = None
+                min_distance = float('inf')
+                
+                for node in ideas:
+                    if node.get('x') is not None and node.get('y') is not None:
+                        # Scale coordinates to match canvas
+                        node_x = (node['x'] + canvas_width/2)
+                        node_y = (node['y'] + canvas_height/2)
+                        
+                        # Calculate distance
+                        distance = ((node_x - click_x) ** 2 + (node_y - click_y) ** 2) ** 0.5
+                        
+                        if distance < min_distance:
+                            min_distance = distance
+                            closest_node = node
+                
+                # Use a threshold based on canvas dimensions
+                click_threshold = min(canvas_width, canvas_height) * 0.08
+                
+                if closest_node and min_distance <= click_threshold:
+                    # Open edit modal for the node
+                    st.session_state['edit_node'] = closest_node['id']
+                    st.rerun()
+                    return create_response_message(message, 'completed')
+                else:
+                    logger.warning(f"No node found near double-click coordinates")
+                    return create_response_message(message, 'failed', 'No node found near double-click coordinates')
+                    
+            except Exception as e:
+                logger.error(f"Error processing canvas double-click: {str(e)}")
+                return create_response_message(message, 'failed', str(e))
+                
+        elif message.action == 'canvas_contextmenu':
+            try:
+                # Extract click coordinates
+                click_x = message.payload.get('x', 0)
+                click_y = message.payload.get('y', 0)
+                canvas_width = message.payload.get('canvasWidth', 800)
+                canvas_height = message.payload.get('canvasHeight', 600)
+                
+                # Find the nearest node
+                closest_node = None
+                min_distance = float('inf')
+                
+                for node in ideas:
+                    if node.get('x') is not None and node.get('y') is not None:
+                        # Scale coordinates to match canvas
+                        node_x = (node['x'] + canvas_width/2)
+                        node_y = (node['y'] + canvas_height/2)
+                        
+                        # Calculate distance
+                        distance = ((node_x - click_x) ** 2 + (node_y - click_y) ** 2) ** 0.5
+                        
+                        if distance < min_distance:
+                            min_distance = distance
+                            closest_node = node
+                
+                # Use a threshold based on canvas dimensions
+                click_threshold = min(canvas_width, canvas_height) * 0.08
+                
+                if closest_node and min_distance <= click_threshold:
+                    # Delete the node
+                    save_state_to_history()
+                    ideas.remove(closest_node)
+                    set_ideas(ideas)
+                    save_data(get_store())
+                    st.rerun()
+                    return create_response_message(message, 'completed')
+                else:
+                    logger.warning(f"No node found near context menu coordinates")
+                    return create_response_message(message, 'failed', 'No node found near context menu coordinates')
+                    
+            except Exception as e:
+                logger.error(f"Error processing canvas context menu: {str(e)}")
+                return create_response_message(message, 'failed', str(e))
+                
+        elif message.action == 'undo':
             if perform_undo():
                 st.rerun()
             return create_response_message(message, 'completed')
