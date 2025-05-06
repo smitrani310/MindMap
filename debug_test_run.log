@@ -1,0 +1,153 @@
+2025-05-06 14:38:44,124 - test_runner - INFO - Starting debug test runner...
+2025-05-06 14:38:44,125 - test_runner - INFO - Checking system configuration...
+2025-05-06 14:38:44,127 - test_runner - INFO - Python version: 3.12.4
+2025-05-06 14:38:44,701 - test_runner - INFO - Streamlit version: 1.45.0
+2025-05-06 14:38:46,223 - test_runner - INFO - PyVis version: 0.3.2
+2025-05-06 14:38:46,224 - test_runner - INFO - Found source file: src/message_queue.py
+2025-05-06 14:38:46,225 - test_runner - INFO - Found source file: src/message_format.py
+2025-05-06 14:38:46,226 - test_runner - INFO - Found source file: src/state.py
+2025-05-06 14:38:46,703 - test_runner - INFO - Found source file: src/handlers.py
+2025-05-06 14:38:46,703 - test_runner - INFO - Found source file: src/utils.py
+2025-05-06 14:38:46,705 - test_runner - INFO - Found source file: main.py
+2025-05-06 14:38:46,705 - test_runner - INFO - Found test file: tests/debug_canvas_actions.py
+2025-05-06 14:38:46,705 - test_runner - INFO - Found test file: tests/debug_message_flow.py
+2025-05-06 14:38:46,707 - test_runner - ERROR - Missing dependencies: pytest
+2025-05-06 14:38:59,387 - test_runner - ERROR - Missing dependencies. Cannot run tests.
+2025-05-06 14:39:05,838 - test_runner - INFO - Starting debug test runner...
+2025-05-06 14:39:05,838 - test_runner - INFO - Checking system configuration...
+2025-05-06 14:39:05,839 - test_runner - INFO - Python version: 3.12.4
+2025-05-06 14:39:06,430 - test_runner - INFO - Streamlit version: 1.45.0
+2025-05-06 14:39:07,482 - test_runner - INFO - PyVis version: 0.3.2
+2025-05-06 14:39:07,482 - test_runner - INFO - Found source file: src/message_queue.py
+2025-05-06 14:39:07,483 - test_runner - INFO - Found source file: src/message_format.py
+2025-05-06 14:39:07,484 - test_runner - INFO - Found source file: src/state.py
+2025-05-06 14:39:07,484 - test_runner - INFO - Found source file: src/handlers.py
+2025-05-06 14:39:07,484 - test_runner - INFO - Found source file: src/utils.py
+2025-05-06 14:39:07,485 - test_runner - INFO - Found source file: main.py
+2025-05-06 14:39:07,485 - test_runner - INFO - Found test file: tests/debug_canvas_actions.py
+2025-05-06 14:39:07,485 - test_runner - INFO - Found test file: tests/debug_message_flow.py
+2025-05-06 14:39:07,486 - test_runner - ERROR - Missing dependencies: pytest
+2025-05-06 14:39:12,515 - test_runner - INFO - Installing pytest...
+2025-05-06 14:39:19,357 - test_runner - INFO - All dependencies installed successfully.
+2025-05-06 14:39:19,357 - test_runner - INFO - Running tests...
+2025-05-06 14:39:19,358 - test_runner - INFO - Running debug tests...
+2025-05-06 14:39:19,358 - test_runner - INFO - Running tests/debug_canvas_actions.py...
+2025-05-06 14:39:21,368 - test_runner - INFO - Test output for tests/debug_canvas_actions.py:
+2025-05-06 14:39:21,374 - test_runner - ERROR - Tests in tests/debug_canvas_actions.py failed.
+2025-05-06 14:39:21,375 - test_runner - INFO - Running tests/debug_message_flow.py...
+2025-05-06 14:39:23,245 - test_runner - INFO - Test output for tests/debug_message_flow.py:
+2025-05-06 14:39:23,250 - test_runner - ERROR - Tests in tests/debug_message_flow.py failed.
+2025-05-06 14:39:23,251 - test_runner - ERROR - Some tests failed. See log for details.
+2025-05-06 14:39:27,665 - test_runner - INFO - Starting debug test runner...
+2025-05-06 14:39:27,665 - test_runner - INFO - Checking system configuration...
+2025-05-06 14:39:27,666 - test_runner - INFO - Python version: 3.12.4
+2025-05-06 14:39:28,197 - test_runner - INFO - Streamlit version: 1.45.0
+2025-05-06 14:39:29,240 - test_runner - INFO - PyVis version: 0.3.2
+2025-05-06 14:39:29,241 - test_runner - INFO - Found source file: src/message_queue.py
+2025-05-06 14:39:29,243 - test_runner - INFO - Found source file: src/message_format.py
+2025-05-06 14:39:29,244 - test_runner - INFO - Found source file: src/state.py
+2025-05-06 14:39:29,245 - test_runner - INFO - Found source file: src/handlers.py
+2025-05-06 14:39:29,245 - test_runner - INFO - Found source file: src/utils.py
+2025-05-06 14:39:29,245 - test_runner - INFO - Found source file: main.py
+2025-05-06 14:39:29,246 - test_runner - INFO - Found test file: tests/debug_canvas_actions.py
+2025-05-06 14:39:29,246 - test_runner - INFO - Found test file: tests/debug_message_flow.py
+2025-05-06 14:39:29,247 - test_runner - INFO - Running tests...
+2025-05-06 14:39:29,247 - test_runner - INFO - Running debug tests...
+2025-05-06 14:39:29,248 - test_runner - INFO - Running tests/debug_canvas_actions.py...
+2025-05-06 14:39:31,431 - test_runner - INFO - Test output for tests/debug_canvas_actions.py:
+2025-05-06 14:39:31,435 - test_runner - ERROR - Tests in tests/debug_canvas_actions.py failed.
+2025-05-06 14:39:31,435 - test_runner - INFO - Running tests/debug_message_flow.py...
+2025-05-06 14:39:33,393 - test_runner - INFO - Test output for tests/debug_message_flow.py:
+2025-05-06 14:39:33,397 - test_runner - ERROR - Tests in tests/debug_message_flow.py failed.
+2025-05-06 14:39:33,397 - test_runner - ERROR - Some tests failed. See log for details.
+2025-05-06 14:42:36,757 - test_runner - INFO - Starting debug test runner...
+2025-05-06 14:42:36,758 - test_runner - INFO - Checking system configuration...
+2025-05-06 14:42:36,758 - test_runner - INFO - Python version: 3.12.4
+2025-05-06 14:42:37,782 - test_runner - INFO - Streamlit version: 1.45.0
+2025-05-06 14:42:37,783 - test_runner - WARNING - PyVis is not installed.
+2025-05-06 14:42:37,783 - test_runner - INFO - Found source file: src/message_queue.py
+2025-05-06 14:42:37,783 - test_runner - INFO - Found source file: src/message_format.py
+2025-05-06 14:42:37,784 - test_runner - INFO - Found source file: src/state.py
+2025-05-06 14:42:37,784 - test_runner - INFO - Found source file: src/handlers.py
+2025-05-06 14:42:37,784 - test_runner - INFO - Found source file: src/utils.py
+2025-05-06 14:42:37,784 - test_runner - INFO - Found source file: main.py
+2025-05-06 14:42:37,785 - test_runner - INFO - Found test file: tests/debug_canvas_actions.py
+2025-05-06 14:42:37,785 - test_runner - INFO - Found test file: tests/debug_message_flow.py
+2025-05-06 14:42:37,786 - test_runner - ERROR - Missing dependencies: pyvis
+2025-05-06 14:42:53,595 - test_runner - INFO - Installing pyvis...
+2025-05-06 14:43:02,121 - test_runner - INFO - All dependencies installed successfully.
+2025-05-06 14:43:02,122 - test_runner - INFO - Running tests...
+2025-05-06 14:43:02,122 - test_runner - INFO - Running debug tests...
+2025-05-06 14:43:02,122 - test_runner - INFO - Running tests/debug_canvas_actions.py...
+2025-05-06 14:43:05,054 - test_runner - INFO - Test output for tests/debug_canvas_actions.py:
+2025-05-06 14:43:05,113 - test_runner - ERROR - Tests in tests/debug_canvas_actions.py failed.
+2025-05-06 14:43:05,114 - test_runner - INFO - Running tests/debug_message_flow.py...
+2025-05-06 14:43:08,634 - test_runner - INFO - Test output for tests/debug_message_flow.py:
+2025-05-06 14:43:08,684 - test_runner - ERROR - Tests in tests/debug_message_flow.py failed.
+2025-05-06 14:43:08,684 - test_runner - ERROR - Some tests failed. See log for details.
+2025-05-06 14:46:41,253 - test_runner - INFO - Starting debug test runner...
+2025-05-06 14:46:41,254 - test_runner - INFO - Checking system configuration...
+2025-05-06 14:46:41,256 - test_runner - INFO - Python version: 3.12.4
+2025-05-06 14:46:41,885 - test_runner - INFO - Streamlit version: 1.45.0
+2025-05-06 14:46:42,950 - test_runner - INFO - PyVis version: 0.3.2
+2025-05-06 14:46:42,950 - test_runner - INFO - Found source file: src/message_queue.py
+2025-05-06 14:46:42,951 - test_runner - INFO - Found source file: src/message_format.py
+2025-05-06 14:46:42,951 - test_runner - INFO - Found source file: src/state.py
+2025-05-06 14:46:42,952 - test_runner - INFO - Found source file: src/handlers.py
+2025-05-06 14:46:42,952 - test_runner - INFO - Found source file: src/utils.py
+2025-05-06 14:46:42,953 - test_runner - INFO - Found source file: main.py
+2025-05-06 14:46:42,953 - test_runner - INFO - Found test file: tests/debug_canvas_actions.py
+2025-05-06 14:46:42,953 - test_runner - INFO - Found test file: tests/debug_message_flow.py
+2025-05-06 14:46:42,954 - test_runner - INFO - Running tests...
+2025-05-06 14:46:42,954 - test_runner - INFO - Running debug tests...
+2025-05-06 14:46:42,955 - test_runner - INFO - Running tests/debug_canvas_actions.py...
+2025-05-06 14:46:44,941 - test_runner - INFO - Test output for tests/debug_canvas_actions.py:
+2025-05-06 14:46:44,949 - test_runner - ERROR - Tests in tests/debug_canvas_actions.py failed.
+2025-05-06 14:46:44,949 - test_runner - INFO - Running tests/debug_message_flow.py...
+2025-05-06 14:46:50,154 - test_runner - INFO - Test output for tests/debug_message_flow.py:
+2025-05-06 14:46:50,158 - test_runner - ERROR - Tests in tests/debug_message_flow.py failed.
+2025-05-06 14:46:50,158 - test_runner - ERROR - Some tests failed. See log for details.
+2025-05-06 14:50:46,592 - test_runner - INFO - Starting debug test runner...
+2025-05-06 14:50:46,592 - test_runner - INFO - Checking system configuration...
+2025-05-06 14:50:46,593 - test_runner - INFO - Python version: 3.12.4
+2025-05-06 14:50:47,365 - test_runner - INFO - Streamlit version: 1.45.0
+2025-05-06 14:50:48,823 - test_runner - INFO - PyVis version: 0.3.2
+2025-05-06 14:50:48,824 - test_runner - INFO - Found source file: src/message_queue.py
+2025-05-06 14:50:48,824 - test_runner - INFO - Found source file: src/message_format.py
+2025-05-06 14:50:48,824 - test_runner - INFO - Found source file: src/state.py
+2025-05-06 14:50:48,825 - test_runner - INFO - Found source file: src/handlers.py
+2025-05-06 14:50:48,825 - test_runner - INFO - Found source file: src/utils.py
+2025-05-06 14:50:48,825 - test_runner - INFO - Found source file: main.py
+2025-05-06 14:50:48,825 - test_runner - INFO - Found test file: tests/debug_canvas_actions.py
+2025-05-06 14:50:48,826 - test_runner - INFO - Found test file: tests/debug_message_flow.py
+2025-05-06 14:50:48,827 - test_runner - INFO - Running tests...
+2025-05-06 14:50:48,827 - test_runner - INFO - Running debug tests...
+2025-05-06 14:50:48,827 - test_runner - INFO - Running tests/debug_canvas_actions.py...
+2025-05-06 14:50:51,143 - test_runner - INFO - Test output for tests/debug_canvas_actions.py:
+2025-05-06 14:50:51,189 - test_runner - ERROR - Tests in tests/debug_canvas_actions.py failed.
+2025-05-06 14:50:51,189 - test_runner - INFO - Running tests/debug_message_flow.py...
+2025-05-06 14:50:51,979 - test_runner - INFO - Test output for tests/debug_message_flow.py:
+2025-05-06 14:50:51,982 - test_runner - ERROR - Tests in tests/debug_message_flow.py failed.
+2025-05-06 14:50:51,983 - test_runner - ERROR - Some tests failed. See log for details.
+2025-05-06 14:50:59,432 - test_runner - INFO - Starting debug test runner...
+2025-05-06 14:50:59,432 - test_runner - INFO - Checking system configuration...
+2025-05-06 14:50:59,432 - test_runner - INFO - Python version: 3.12.4
+2025-05-06 14:50:59,930 - test_runner - INFO - Streamlit version: 1.45.0
+2025-05-06 14:51:00,820 - test_runner - INFO - PyVis version: 0.3.2
+2025-05-06 14:51:00,821 - test_runner - INFO - Found source file: src/message_queue.py
+2025-05-06 14:51:00,821 - test_runner - INFO - Found source file: src/message_format.py
+2025-05-06 14:51:00,821 - test_runner - INFO - Found source file: src/state.py
+2025-05-06 14:51:00,821 - test_runner - INFO - Found source file: src/handlers.py
+2025-05-06 14:51:00,821 - test_runner - INFO - Found source file: src/utils.py
+2025-05-06 14:51:00,822 - test_runner - INFO - Found source file: main.py
+2025-05-06 14:51:00,822 - test_runner - INFO - Found test file: tests/debug_canvas_actions.py
+2025-05-06 14:51:00,822 - test_runner - INFO - Found test file: tests/debug_message_flow.py
+2025-05-06 14:51:00,823 - test_runner - INFO - Running tests...
+2025-05-06 14:51:00,823 - test_runner - INFO - Running debug tests...
+2025-05-06 14:51:00,824 - test_runner - INFO - Running tests/debug_canvas_actions.py...
+2025-05-06 14:51:02,654 - test_runner - INFO - Test output for tests/debug_canvas_actions.py:
+2025-05-06 14:51:02,658 - test_runner - ERROR - Tests in tests/debug_canvas_actions.py failed.
+2025-05-06 14:51:02,659 - test_runner - INFO - Running tests/debug_message_flow.py...
+2025-05-06 14:51:03,401 - test_runner - INFO - Test output for tests/debug_message_flow.py:
+2025-05-06 14:51:03,403 - test_runner - ERROR - Tests in tests/debug_message_flow.py failed.
+2025-05-06 14:51:03,403 - test_runner - ERROR - Some tests failed. See log for details.
