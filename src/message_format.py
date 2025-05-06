@@ -61,12 +61,12 @@ def validate_message(data: Union[Dict[str, Any], str]) -> bool:
     except (json.JSONDecodeError, TypeError):
         return False
 
-def create_response_message(original_message: Message, status: str, error: Optional[str] = None) -> Message:
+def create_response_message(original_message: Message, status: str, error: Optional[str] = None, payload: Optional[Dict[str, Any]] = None) -> Message:
     """Create a response message based on the original message."""
     return Message(
         source='backend',
         action=f"{original_message.action}_response",
-        payload=original_message.payload,
+        payload=payload if payload is not None else original_message.payload,
         message_id=str(uuid.uuid4()),
         timestamp=datetime.datetime.now().timestamp() * 1000,
         status=status,

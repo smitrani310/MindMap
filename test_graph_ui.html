@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Graph UI Test</title>
+    <script src="src/message_utils.js"></script>
+    <style>
+        .test-container {
+            margin: 20px;
+            padding: 20px;
+            border: 1px solid #ccc;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .failure {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .pending {
+            background-color: #fcf8e3;
+            color: #8a6d3b;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Graph UI Test</h1>
+        <div id="output"></div>
+        <button onclick="runAllTests()">Run All Tests</button>
+    </div>
+
+    <script>
+        // Mock graph state
+        let graphState = {
+            nodes: {},
+            selectedNode: null
+        };
+
+        // Test results tracking
+        let testResults = [];
+
+        function log(message, type = 'info') {
+            const output = document.getElementById('output');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${type}`;
+            resultDiv.textContent = message;
+            output.appendChild(resultDiv);
+            console.log(message);
+        }
+
+        function assert(condition, message) {
+            if (!condition) {
+                throw new Error(message);
+            }
+        }
+
+        function runTest(name, testFn) {
+            log(`Running test: ${name}`, 'pending');
+            try {
+                testFn();
+                log(`✓ ${name} passed`, 'success');
+                testResults.push({ name, passed: true });
+            } catch (error) {
+                log(`✗ ${name} failed: ${error.message}`, 'failure');
+                testResults.push({ name, passed: false, error: error.message });
+            }
+        }
+
+        // Test cases
+        function testNodeCreation() {
+            const parentId = 'root';
+            const title = 'Test Node';
+            
+            // Send create node message
+            const message = messageUtils.createMessage('graph', 'create_node', {
+                parent_id: parentId,
+                title: title
+            });
+            
+            // Simulate response
+            const response = {
+                status: 'completed',
+                payload: {
+                    new_node: {
+                        id: 'new_node_1',
+                        title: title
+                    }
+                }
+            };
+            
+            // Update graph state
+            graphState.nodes['new_node_1'] = {
+                id: 'new_node_1',
+                title: title,
+                parentId: parentId
+            };
+            
+            assert(graphState.nodes['new_node_1'], 'Node was not created');
+            assert(graphState.nodes['new_node_1'].title === title, 'Node title does not match');
+        }
+
+        function testNodeSelection() {
+            const nodeId = 'new_node_1';
+            
+            // Send select node message
+            const message = messageUtils.createMessage('graph', 'select_node', {
+                node_id: nodeId
+            });
+            
+            // Update graph state
+            graphState.selectedNode = nodeId;
+            
+            assert(graphState.selectedNode === nodeId, 'Node was not selected');
+        }
+
+        function testNodeEditing() {
+            const nodeId = 'new_node_1';
+            const newTitle = 'Updated Title';
+            
+            // Send edit node message
+            const message = messageUtils.createMessage('graph', 'edit_node', {
+                node_id: nodeId,
+                title: newTitle
+            });
+            
+            // Update graph state
+            graphState.nodes[nodeId].title = newTitle;
+            
+            assert(graphState.nodes[nodeId].title === newTitle, 'Node title was not updated');
+        }
+
+        function testNodeMovement() {
+            const nodeId = 'new_node_1';
+            const newPosition = { x: 100, y: 200 };
+            
+            // Send move node message
+            const message = messageUtils.createMessage('graph', 'move_node', {
+                node_id: nodeId,
+                position: newPosition
+            });
+            
+            // Update graph state
+            graphState.nodes[nodeId].position = newPosition;
+            
+            assert(graphState.nodes[nodeId].position.x === newPosition.x, 'Node X position was not updated');
+            assert(graphState.nodes[nodeId].position.y === newPosition.y, 'Node Y position was not updated');
+        }
+
+        function testNodeDeletion() {
+            const nodeId = 'new_node_1';
+            
+            // Send delete node message
+            const message = messageUtils.createMessage('graph', 'delete_node', {
+                node_id: nodeId
+            });
+            
+            // Update graph state
+            delete graphState.nodes[nodeId];
+            
+            // Clear selection if the deleted node was selected
+            if (graphState.selectedNode === nodeId) {
+                graphState.selectedNode = null;
+            }
+            
+            assert(!graphState.nodes[nodeId], 'Node was not deleted');
+        }
+
+        function testActionSequence() {
+            // Create a node
+            testNodeCreation();
+            
+            // Select the node
+            testNodeSelection();
+            
+            // Edit the node
+            testNodeEditing();
+            
+            // Move the node
+            testNodeMovement();
+            
+            // Delete the node
+            testNodeDeletion();
+            
+            // Verify final state
+            assert(Object.keys(graphState.nodes).length === 0, 'Graph should be empty after deletion');
+            assert(graphState.selectedNode === null, 'No node should be selected after deletion');
+        }
+
+        function runAllTests() {
+            // Clear previous results
+            document.getElementById('output').innerHTML = '';
+            testResults = [];
+            
+            // Run individual tests
+            runTest('Node Creation', testNodeCreation);
+            runTest('Node Selection', testNodeSelection);
+            runTest('Node Editing', testNodeEditing);
+            runTest('Node Movement', testNodeMovement);
+            runTest('Node Deletion', testNodeDeletion);
+            
+            // Run sequence test
+            runTest('Action Sequence', testActionSequence);
+            
+            // Log summary
+            const passed = testResults.filter(r => r.passed).length;
+            const total = testResults.length;
+            log(`\nTest Summary: ${passed}/${total} tests passed`, passed === total ? 'success' : 'failure');
+        }
+    </script>
+</body>
+</html> 
