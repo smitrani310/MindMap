@@ -26,6 +26,9 @@ function sendLog(level, message, data = null) {
 
 // Initialize network handlers
 export function initializeNetworkHandlers() {
+    // Remove any existing event listeners first
+    cleanupNetworkHandlers();
+    
     // Set up message event listener
     window.addEventListener('message', handleIncomingMessage);
     
@@ -41,7 +44,7 @@ export function initializeNetworkHandlers() {
             const relX = event.clientX - rect.left;
             const relY = event.clientY - rect.top;
             
-            const message = messageUtils.createMessage('network_canvas', 'canvas_click', {
+            const message = messageUtils.createMessage('frontend', 'canvas_click', {
                 x: relX,
                 y: relY,
                 canvasWidth: rect.width,
@@ -61,7 +64,7 @@ export function initializeNetworkHandlers() {
             const relX = event.clientX - rect.left;
             const relY = event.clientY - rect.top;
             
-            const message = messageUtils.createMessage('network_canvas', 'canvas_dblclick', {
+            const message = messageUtils.createMessage('frontend', 'canvas_dblclick', {
                 x: relX,
                 y: relY,
                 canvasWidth: rect.width,
@@ -82,7 +85,7 @@ export function initializeNetworkHandlers() {
             const relY = event.clientY - rect.top;
             
             if (confirm('Delete this bubble?')) {
-                const message = messageUtils.createMessage('network_canvas', 'canvas_contextmenu', {
+                const message = messageUtils.createMessage('frontend', 'canvas_contextmenu', {
                     x: relX,
                     y: relY,
                     canvasWidth: rect.width,
@@ -118,16 +121,37 @@ function handleIncomingMessage(event) {
             case 'view_node_response':
                 // Node was selected
                 sendLog('info', 'Node selected', message.payload);
+                if (message.status === 'completed') {
+                    // Update UI to show selected node
+                    const nodeId = message.payload.node_id;
+                    if (window.visNetwork) {
+                        window.visNetwork.selectNodes([nodeId]);
+                    }
+                }
                 break;
                 
             case 'edit_node_response':
                 // Node is being edited
                 sendLog('info', 'Node being edited', message.payload);
+                if (message.status === 'completed') {
+                    // Show edit modal
+                    const nodeId = message.payload.node_id;
+                    if (window.showEditModal) {
+                        window.showEditModal(nodeId);
+                    }
+                }
                 break;
                 
             case 'delete_node_response':
                 // Node was deleted
                 sendLog('info', 'Node deleted', message.payload);
+                if (message.status === 'completed') {
+                    // Remove node from visualization
+                    const nodeId = message.payload.node_id;
+                    if (window.visNetwork) {
+                        window.visNetwork.deleteSelected();
+                    }
+                }
                 break;
                 
             default:

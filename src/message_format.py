@@ -50,23 +50,56 @@ class Message:
         """Create a message from a JSON string."""
         return cls.from_dict(json.loads(json_str))
 
-def validate_message(data: Union[Dict[str, Any], str]) -> bool:
-    """Validate if the given data matches the required message format."""
+def validate_message(msg_data: Dict[str, Any]) -> bool:
+    """Validate message format and content."""
     try:
-        if isinstance(data, str):
-            data = json.loads(data)
-        
-        required_fields = {'source', 'action', 'payload', 'message_id', 'timestamp'}
-        return all(field in data for field in required_fields)
-    except (json.JSONDecodeError, TypeError):
+        # Check required fields
+        required_fields = {'message_id', 'source', 'action', 'payload', 'timestamp'}
+        if not all(field in msg_data for field in required_fields):
+            return False
+
+        # Validate field types
+        if not isinstance(msg_data['message_id'], str):
+            return False
+        if not isinstance(msg_data['source'], str):
+            return False
+        if not isinstance(msg_data['action'], str):
+            return False
+        if not isinstance(msg_data['payload'], dict):
+            return False
+        if not isinstance(msg_data['timestamp'], (int, float)):
+            return False
+
+        # Validate action type
+        valid_actions = {
+            'canvas_click', 'canvas_dblclick', 'canvas_contextmenu',
+            'new_node', 'create_node', 'edit_node', 'delete', 'delete_node', 'pos', 'reparent',
+            'center_node', 'select_node', 'undo', 'redo'
+        }
+        if msg_data['action'] not in valid_actions:
+            return False
+
+        # Validate source
+        valid_sources = {'frontend', 'backend'}
+        if msg_data['source'] not in valid_sources:
+            return False
+
+        return True
+    except Exception:
         return False
 
 def create_response_message(original_message: Message, status: str, error: Optional[str] = None, payload: Optional[Dict[str, Any]] = None) -> Message:
     """Create a response message based on the original message."""
+    response_payload = payload if payload is not None else {}
+    
+    # Add error to payload for failed messages
+    if status == 'failed' and error:
+        response_payload['error'] = error
+        
     return Message(
         source='backend',
         action=f"{original_message.action}_response",
-        payload=payload if payload is not None else original_message.payload,
+        payload=response_payload,
         message_id=str(uuid.uuid4()),
         timestamp=datetime.datetime.now().timestamp() * 1000,
         status=status,

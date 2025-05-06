@@ -978,14 +978,14 @@ try:
             logger.debug(f"Node {node_id}: Using tag color {color_hex} for tag '{n['tag']}'")
         else:
             # Fall back to urgency color
-            color_hex = get_urgency_color(n['urgency'])
-            logger.debug(f"Node {node_id}: Using urgency color {color_hex} for '{n['urgency']}'")
+            color_hex = get_urgency_color(n.get('urgency', 'medium'))
+            logger.debug(f"Node {node_id}: Using urgency color {color_hex} for '{n.get('urgency', 'medium')}'")
 
         r, g, b = hex_to_rgb(color_hex)
         bg, bd = f"rgba({r},{g},{b},{RGBA_ALPHA})", f"rgba({r},{g},{b},1)"
 
         # Apply the size multiplier to make urgency differences more noticeable
-        base_size = n['size']
+        base_size = n.get('size', 20)  # Default size of 20 if not set
         if n.get('urgency') == 'high':
             base_size = base_size * size_multiplier
         elif n.get('urgency') == 'low':
@@ -1756,13 +1756,32 @@ def handle_message_with_queue(message: Message) -> None:
         # Send response back to frontend
         if response:
             response_message = Message.from_dict(response)
+            # Store in session state
             st.session_state['last_response'] = response_message.to_json()
+            
+            # Send response back to frontend via postMessage
+            js_code = f"""
+            <script>
+                window.parent.postMessage({response_message.to_json()}, '*');
+            </script>
+            """
+            st.components.v1.html(js_code, height=0)
+            
             st.rerun()
             
     except Exception as e:
         logger.error(f"Error handling message: {str(e)}")
         response = create_response_message(message, 'failed', str(e))
         st.session_state['last_response'] = response.to_json()
+        
+        # Send error response back to frontend
+        js_code = f"""
+        <script>
+            window.parent.postMessage({response.to_json()}, '*');
+        </script>
+        """
+        st.components.v1.html(js_code, height=0)
+        
         st.rerun()
 
 # Initialize message queue
