@@ -584,10 +584,8 @@ try:
                     set_central(next((i.get('id') for i in validated_data if i.get('is_central') and i.get('id') is not None), None))
                     save_data(get_store())
                     
-                    # Restart the message queue to ensure it works with the new data
-                    message_queue.stop()
-                    time.sleep(0.2)  # Allow time for the thread to fully stop
-                    message_queue.start(handle_message_with_queue)
+                    # Set a flag to reinitialize the message queue after import
+                    st.session_state['reinitialize_message_queue'] = True
                     
                     logger.info(f"Successfully imported {len(validated_data)} nodes from {uploaded.name}")
                     st.success("Imported bubbles from JSON")
@@ -1825,6 +1823,17 @@ def handle_message_with_queue(message: Message) -> None:
 
 # Initialize message queue
 message_queue.start(handle_message_with_queue)
+
+# Handle reinitialization if needed (this happens after importing JSON files)
+if st.session_state.get('reinitialize_message_queue', False):
+    # Clear the flag
+    del st.session_state['reinitialize_message_queue']
+    
+    # Stop and restart the message queue to ensure it works with new data
+    message_queue.stop()
+    time.sleep(0.2)  # Allow time for the thread to fully stop
+    message_queue.start(handle_message_with_queue)
+    logger.info("Message queue reinitialized after import")
 
 # Add cleanup on app shutdown
 def cleanup():
