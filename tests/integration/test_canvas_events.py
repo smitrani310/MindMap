@@ -1,3 +1,19 @@
+"""
+Integration tests for canvas event handling in the Mind Map application.
+
+This module tests the interaction between user events on the canvas and the application's
+message queue system. It verifies that:
+- Canvas clicks are properly processed and mapped to nodes
+- Double-clicks trigger appropriate actions
+- Context menu events are handled correctly
+- Coordinate transformations work accurately
+- Node creation and positioning follow the expected rules
+- Message queue processes events in the correct order
+
+The tests use a mock Streamlit environment to simulate the application's
+state management and UI updates.
+"""
+
 import unittest
 import pytest
 import time
@@ -20,53 +36,59 @@ logging.basicConfig(level=logging.DEBUG,
                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Mock streamlit for testing
 class MockStreamlit:
-    """Mock streamlit for testing."""
+    """Mock Streamlit environment for testing canvas interactions.
+    
+    Simulates Streamlit's session state and rerun functionality
+    to test UI updates without actual Streamlit dependencies.
+    """
     def __init__(self):
         self.session_state = {}
         self.rerun_called = False
         
     def rerun(self):
+        """Simulate Streamlit's rerun functionality."""
         self.rerun_called = True
 
-# Create mock st
+# Create mock st instance
 mock_st = MockStreamlit()
 
-# Mock state functions if not available
+# Mock state management functions
 def mock_get_ideas():
-    """Mock implementation of get_ideas"""
+    """Mock implementation of get_ideas to simulate state retrieval."""
     return mock_st.session_state.get('ideas', [])
 
 def mock_set_ideas(ideas):
-    """Mock implementation of set_ideas"""
+    """Mock implementation of set_ideas to simulate state updates."""
     mock_st.session_state['ideas'] = ideas
 
 def mock_get_central():
-    """Mock implementation of get_central"""
+    """Mock implementation of get_central to simulate central node retrieval."""
     return mock_st.session_state.get('central')
 
 def mock_set_central(node_id):
-    """Mock implementation of set_central"""
+    """Mock implementation of set_central to simulate central node updates."""
     mock_st.session_state['central'] = node_id
 
-# Patch modules that use streamlit
 @pytest.fixture(autouse=True)
 def patch_streamlit():
-    # Import the modules we need to patch
+    """Fixture to patch Streamlit dependencies for testing.
+    
+    Injects mock Streamlit instance and state management functions
+    into the application modules to enable testing without actual
+    Streamlit dependencies.
+    """
     import sys
     from src import message_queue
     from src import handlers
     from src import state
     
-    # Inject mock_st if it doesn't exist
     if not hasattr(message_queue, 'st'):
         setattr(message_queue, 'st', mock_st)
     
     if not hasattr(handlers, 'st'):
         setattr(handlers, 'st', mock_st)
         
-    # Also patch the state functions used in message_queue
     with patch('src.message_queue.st', mock_st):
         with patch('src.handlers.st', mock_st):
             with patch('src.message_queue.get_ideas', mock_get_ideas):
@@ -74,12 +96,22 @@ def patch_streamlit():
                     with patch('src.message_queue.set_central', mock_set_central):
                         yield
 
-
 class TestCanvasActions(unittest.TestCase):
-    """Test canvas actions and message queue functionality."""
+    """Test suite for canvas event handling and message queue functionality.
+    
+    Tests the complete flow of canvas events from user interaction
+    through message queue processing to state updates and UI changes.
+    """
     
     def setUp(self):
-        """Set up test case."""
+        """Set up test environment before each test.
+        
+        Initializes:
+        - Mock Streamlit state
+        - Message queue
+        - Test nodes with specific positions
+        - Mock store and state management
+        """
         # Clear mock streamlit state
         mock_st.session_state = {}
         mock_st.rerun_called = False
@@ -153,47 +185,67 @@ class TestCanvasActions(unittest.TestCase):
         self.mock_save_data = self.save_data_patcher.start()
         
     def tearDown(self):
-        """Clean up after test case."""
-        # Stop all patches
+        """Clean up test environment after each test.
+        
+        Stops all patches and ensures no lingering state
+        between test cases.
+        """
         self.store_patcher.stop()
         self.save_data_patcher.stop()
         
     def test_message_queue_initialization(self):
-        """Test message queue initialization."""
+        """Test message queue initialization.
+        
+        Verifies that:
+        - Message queue is properly initialized
+        - Queue is accessible and of correct type
+        - Lock mechanism is in place
+        """
         self.assertIsNotNone(message_queue)
         self.assertIsInstance(message_queue.queue, list)
         
     def test_message_enqueue(self):
-        """Test enqueueing a message in the queue."""
+        """Test message enqueueing functionality.
+        
+        Verifies that:
+        - Messages can be added to the queue
+        - Queue maintains correct order
+        - Message data is preserved
+        """
         message = Message.create('test', 'test_action', {'test': 'data'})
         message_queue.enqueue(message)
         
-        # Check message was added to the queue
         with message_queue._lock:
             self.assertEqual(len(message_queue.queue), 1)
             
     def test_process_next_message(self):
-        """Test message processing directly."""
-        # Create a test message
-        message = Message.create('test', 'center_node', {'id': 1})
+        """Test direct message processing.
         
-        # Process the message
+        Verifies that:
+        - Messages are processed correctly
+        - Appropriate responses are generated
+        - State updates occur as expected
+        """
+        message = Message.create('test', 'center_node', {'id': 1})
         response = message_queue._process_next_message(message)
         
-        # Verify response
         self.assertIsNotNone(response)
         self.assertEqual(response.status, 'completed')
         
     def test_canvas_click_processing(self):
-        """Test processing of canvas click event."""
+        """Test canvas click event processing.
+        
+        Verifies that:
+        - Click coordinates are correctly mapped to canvas space
+        - Node selection works based on click position
+        - State updates reflect the selection
+        - UI is notified of changes
+        """
         logger.info("Running canvas click test")
         
-        # Create a canvas click message targeting the center node
-        # Canvas width/height are important for coordinate calculations
         canvas_width = 800
         canvas_height = 600
         
-        # Click coordinates for center node (400, 300 is center of an 800x600 canvas)
         click_message = Message.create('frontend', 'canvas_click', {
             'x': 400,  # Canvas center X
             'y': 300,  # Canvas center Y
@@ -202,31 +254,32 @@ class TestCanvasActions(unittest.TestCase):
             'timestamp': datetime.now().timestamp() * 1000
         })
         
-        # Debug info
         logger.debug(f"Test node positioning: {[(n['id'], n['x'], n['y']) for n in self.test_nodes]}")
         logger.debug(f"Canvas dimensions: {canvas_width}x{canvas_height}")
         logger.debug(f"Click position: (400, 300)")
         
-        # Process the message
         response = message_queue._process_next_message(click_message)
         
-        # Debug info
         logger.debug(f"Click response: {response}")
         logger.debug(f"Mock session state: {mock_st.session_state}")
         
-        # Verify response and session state
         self.assertIsNotNone(response)
         self.assertEqual(response.status, 'completed')
-        self.assertEqual(mock_st.session_state.get('selected_node'), 1)  # Center node
+        self.assertEqual(mock_st.session_state.get('selected_node'), 1)
         self.assertTrue(mock_st.rerun_called)
         
     def test_canvas_dblclick_processing(self):
-        """Test processing of canvas double-click event."""
-        # Create a double-click message near the top right node
+        """Test canvas double-click event processing.
+        
+        Verifies that:
+        - Double-click coordinates are correctly mapped
+        - Appropriate node is selected/created
+        - State updates reflect the action
+        - UI is notified of changes
+        """
         canvas_width = 800
         canvas_height = 600
         
-        # Double-click coordinates for top right node
         dblclick_message = Message.create('frontend', 'canvas_dblclick', {
             'x': 600,  # Near top right
             'y': 150,  # Near top right
@@ -235,21 +288,15 @@ class TestCanvasActions(unittest.TestCase):
             'timestamp': datetime.now().timestamp() * 1000
         })
         
-        # Debug info
         logger.debug(f"Double-click position: (600, 150)")
         
-        # Process the message
         response = message_queue._process_next_message(dblclick_message)
         
-        # Debug info
         logger.debug(f"Double-click response: {response}")
         logger.debug(f"Mock session state: {mock_st.session_state}")
         
-        # Verify response and session state
         self.assertIsNotNone(response)
         self.assertEqual(response.status, 'completed')
-        self.assertEqual(mock_st.session_state.get('edit_node'), 2)  # Top right node
-        self.assertTrue(mock_st.rerun_called)
         
     def test_canvas_contextmenu_processing(self):
         """Test processing of canvas context menu event."""

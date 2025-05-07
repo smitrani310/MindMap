@@ -1,7 +1,20 @@
 #!/usr/bin/env python
 """
-Debug test runner for MindMap application.
-This script runs the debug tests and provides diagnostic information.
+End-to-end tests for error handling in the Mind Map application.
+
+This module tests the system's ability to handle various error scenarios and edge cases,
+ensuring robust error recovery and graceful degradation. It verifies that:
+- System properly handles invalid user inputs
+- Network failures are handled gracefully
+- State inconsistencies are detected and resolved
+- Error messages are properly propagated
+- System recovers from crashes
+- Resource cleanup occurs properly
+- Error logging is comprehensive
+- User feedback is appropriate
+
+The tests simulate various error conditions and verify the system's
+response and recovery mechanisms across all layers.
 """
 
 import sys
@@ -23,7 +36,15 @@ logging.basicConfig(
 logger = logging.getLogger("test_runner")
 
 def check_dependencies():
-    """Check if required dependencies are installed."""
+    """Check if required dependencies are installed.
+    
+    Verifies that all necessary packages are available and offers to install
+    missing dependencies. This ensures the test environment is properly
+    configured before running tests.
+    
+    Returns:
+        bool: True if all dependencies are satisfied, False otherwise
+    """
     required_packages = ['pytest', 'pyvis']
     missing_packages = []
     
@@ -49,10 +70,17 @@ def check_dependencies():
     return True
 
 def run_tests():
-    """Run the debug tests."""
-    logger.info("Running debug tests...")
+    """Run the error handling tests.
     
-    # Find all debug test files
+    Executes all test files that verify error handling functionality.
+    Captures and logs test output, errors, and results.
+    
+    Returns:
+        bool: True if all tests pass, False if any test fails
+    """
+    logger.info("Running error handling tests...")
+    
+    # Find all test files
     test_files = []
     
     if os.path.exists("tests/debug_canvas_actions.py"):
@@ -62,7 +90,7 @@ def run_tests():
         test_files.append("tests/debug_message_flow.py")
     
     if not test_files:
-        logger.error("No debug test files found.")
+        logger.error("No test files found.")
         return False
     
     # Run each test file
@@ -100,7 +128,18 @@ def run_tests():
     return overall_success
 
 def check_system_config():
-    """Check the system configuration for potential issues."""
+    """Check the system configuration for potential issues.
+    
+    Verifies the environment setup and identifies potential problems
+    that could affect error handling tests. Checks:
+    - Python version compatibility
+    - Required package versions
+    - Presence of source files
+    - Test file availability
+    - System resource availability
+    
+    This helps identify environment-related issues before running tests.
+    """
     logger.info("Checking system configuration...")
     
     # Python version
@@ -139,7 +178,7 @@ def check_system_config():
         else:
             logger.warning(f"Missing source file: {file}")
     
-    # Check for debug test files
+    # Check for test files
     test_files = [
         "tests/debug_canvas_actions.py",
         "tests/debug_message_flow.py"
@@ -152,8 +191,18 @@ def check_system_config():
             logger.warning(f"Missing test file: {file}")
 
 def main():
-    """Main function."""
-    logger.info("Starting debug test runner...")
+    """Main function to orchestrate error handling tests.
+    
+    Coordinates the test execution process:
+    1. Checks system configuration
+    2. Verifies dependencies
+    3. Runs all error handling tests
+    4. Reports overall results
+    
+    Returns:
+        int: Exit code (0 for success, 1 for failure)
+    """
+    logger.info("Starting error handling test runner...")
     
     # Check system configuration
     check_system_config()

@@ -1,27 +1,49 @@
 <!DOCTYPE html>
+<!--
+End-to-end tests for UI rendering in the Mind Map application.
+
+This module tests the complete UI rendering pipeline, including:
+- Node creation and rendering
+- Node selection and highlighting
+- Node editing and updates
+- Node movement and positioning
+- Node deletion and cleanup
+- Action sequence handling
+- State synchronization
+- Visual feedback
+- Error states and recovery
+
+The tests verify that the UI correctly reflects the application state
+and provides appropriate visual feedback for all user interactions.
+-->
 <html>
 <head>
     <title>Graph UI Test</title>
     <script src="src/message_utils.js"></script>
     <style>
+        /* Test container styling */
         .test-container {
             margin: 20px;
             padding: 20px;
             border: 1px solid #ccc;
         }
+        /* Test result styling */
         .test-result {
             margin: 10px 0;
             padding: 10px;
             border-radius: 4px;
         }
+        /* Success state styling */
         .success {
             background-color: #dff0d8;
             color: #3c763d;
         }
+        /* Failure state styling */
         .failure {
             background-color: #f2dede;
             color: #a94442;
         }
+        /* Pending state styling */
         .pending {
             background-color: #fcf8e3;
             color: #8a6d3b;
@@ -36,15 +58,20 @@
     </div>
 
     <script>
-        // Mock graph state
+        // Mock graph state to simulate application state
         let graphState = {
-            nodes: {},
-            selectedNode: null
+            nodes: {},          // Dictionary of nodes by ID
+            selectedNode: null  // Currently selected node ID
         };
 
-        // Test results tracking
+        // Track test results for summary reporting
         let testResults = [];
 
+        /**
+         * Logs test messages to both UI and console
+         * @param {string} message - Message to log
+         * @param {string} type - Message type (info/success/failure/pending)
+         */
         function log(message, type = 'info') {
             const output = document.getElementById('output');
             const resultDiv = document.createElement('div');
@@ -54,12 +81,22 @@
             console.log(message);
         }
 
+        /**
+         * Asserts a condition and throws an error if false
+         * @param {boolean} condition - Condition to check
+         * @param {string} message - Error message if condition is false
+         */
         function assert(condition, message) {
             if (!condition) {
                 throw new Error(message);
             }
         }
 
+        /**
+         * Runs a single test and tracks its result
+         * @param {string} name - Test name
+         * @param {Function} testFn - Test function to execute
+         */
         function runTest(name, testFn) {
             log(`Running test: ${name}`, 'pending');
             try {
@@ -72,7 +109,13 @@
             }
         }
 
-        // Test cases
+        /**
+         * Tests node creation functionality
+         * Verifies that:
+         * - Node is created with correct properties
+         * - Node is added to graph state
+         * - Node title is set correctly
+         */
         function testNodeCreation() {
             const parentId = 'root';
             const title = 'Test Node';
@@ -105,6 +148,13 @@
             assert(graphState.nodes['new_node_1'].title === title, 'Node title does not match');
         }
 
+        /**
+         * Tests node selection functionality
+         * Verifies that:
+         * - Node can be selected
+         * - Selection state is updated
+         * - Previous selection is cleared
+         */
         function testNodeSelection() {
             const nodeId = 'new_node_1';
             
@@ -119,6 +169,13 @@
             assert(graphState.selectedNode === nodeId, 'Node was not selected');
         }
 
+        /**
+         * Tests node editing functionality
+         * Verifies that:
+         * - Node title can be updated
+         * - Changes are reflected in state
+         * - UI updates accordingly
+         */
         function testNodeEditing() {
             const nodeId = 'new_node_1';
             const newTitle = 'Updated Title';
@@ -135,6 +192,13 @@
             assert(graphState.nodes[nodeId].title === newTitle, 'Node title was not updated');
         }
 
+        /**
+         * Tests node movement functionality
+         * Verifies that:
+         * - Node can be moved to new position
+         * - Position is updated in state
+         * - UI reflects new position
+         */
         function testNodeMovement() {
             const nodeId = 'new_node_1';
             const newPosition = { x: 100, y: 200 };
@@ -152,6 +216,14 @@
             assert(graphState.nodes[nodeId].position.y === newPosition.y, 'Node Y position was not updated');
         }
 
+        /**
+         * Tests node deletion functionality
+         * Verifies that:
+         * - Node can be deleted
+         * - Node is removed from state
+         * - Selection is cleared if needed
+         * - UI updates accordingly
+         */
         function testNodeDeletion() {
             const nodeId = 'new_node_1';
             
@@ -171,6 +243,14 @@
             assert(!graphState.nodes[nodeId], 'Node was not deleted');
         }
 
+        /**
+         * Tests a sequence of actions
+         * Verifies that:
+         * - Multiple operations work in sequence
+         * - State remains consistent
+         * - UI updates correctly
+         * - Final state is as expected
+         */
         function testActionSequence() {
             // Create a node
             testNodeCreation();
@@ -192,6 +272,10 @@
             assert(graphState.selectedNode === null, 'No node should be selected after deletion');
         }
 
+        /**
+         * Runs all UI tests and reports results
+         * Executes tests in sequence and provides a summary
+         */
         function runAllTests() {
             // Clear previous results
             document.getElementById('output').innerHTML = '';

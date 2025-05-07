@@ -1,8 +1,41 @@
 <!DOCTYPE html>
+<!--
+End-to-end tests for message utilities in the Mind Map application.
+
+This module tests the message handling utilities that facilitate communication
+between different parts of the application. It verifies:
+- Message creation and formatting
+- Message validation rules
+- Message sending and delivery
+- Message handling and processing
+- Error handling in message operations
+- Message state management
+- Message queue integration
+- Response handling
+
+The tests ensure that the message system correctly formats, validates,
+and processes messages throughout the application.
+-->
 <html>
 <head>
     <title>Message Utils Test</title>
     <script src="src/message_utils.js"></script>
+    <style>
+        /* Test output styling */
+        #output {
+            margin: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            font-family: monospace;
+        }
+        /* Test button styling */
+        button {
+            margin: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
     <h1>Message Utils Test</h1>
@@ -10,12 +43,25 @@
     <button onclick="testMessageUtils()">Run Tests</button>
 
     <script>
+        /**
+         * Logs test messages to both UI and console
+         * @param {string} message - Message to log
+         */
         function log(message) {
             const output = document.getElementById('output');
             output.innerHTML += message + '<br>';
             console.log(message);
         }
 
+        /**
+         * Tests message utilities functionality
+         * Verifies:
+         * - Message creation with correct format
+         * - Message validation rules
+         * - Message sending mechanism
+         * - Message handling process
+         * - Error handling
+         */
         function testMessageUtils() {
             try {
                 // Test message creation

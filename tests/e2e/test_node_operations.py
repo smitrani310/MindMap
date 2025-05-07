@@ -1,3 +1,20 @@
+#!/usr/bin/env python
+"""
+End-to-end tests for node operations in the Mind Map application.
+
+This module tests the complete flow of node-related operations from user interaction
+through the entire system stack. It verifies that:
+- Node creation, editing, and deletion work end-to-end
+- Node relationships are properly maintained
+- State changes are correctly persisted
+- UI updates reflect node changes
+- Message flow handles node operations correctly
+- Error cases are properly handled
+
+The tests simulate real user interactions and verify the complete system
+behavior, including frontend, backend, and persistence layers.
+"""
+
 import unittest
 import time
 import logging
@@ -21,10 +38,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class TestMessageFormat(unittest.TestCase):
-    """Test message format and response creation."""
+    """Test suite for end-to-end node operations.
+    
+    Tests the complete flow of node-related operations, ensuring that
+    all system components work together correctly to handle node
+    creation, modification, and deletion.
+    """
     
     def test_message_validation(self):
-        """Test message validation functionality."""
+        """Test message validation functionality.
+        
+        Verifies that:
+        - Valid messages are properly validated
+        - Invalid messages are rejected
+        - Required fields are enforced
+        - Field types are checked
+        - Action names are validated
+        
+        This test ensures the message validation layer correctly
+        filters messages before they reach the processing layer.
+        """
         # Test valid message
         valid_message = {
             'message_id': '12345',
@@ -64,7 +97,19 @@ class TestMessageFormat(unittest.TestCase):
         self.assertFalse(validate_message(invalid_message3))
         
     def test_message_creation(self):
-        """Test message creation."""
+        """Test message creation and serialization.
+        
+        Verifies that:
+        - Messages are created with correct properties
+        - Required fields are automatically populated
+        - Message serialization works correctly
+        - Message deserialization maintains data integrity
+        - Message IDs are unique
+        - Timestamps are properly set
+        
+        This test ensures the message creation and serialization
+        layer works correctly for all node operations.
+        """
         # Create a message
         message = Message.create('frontend', 'canvas_click', {'x': 100, 'y': 100})
         
@@ -82,7 +127,18 @@ class TestMessageFormat(unittest.TestCase):
         self.assertEqual(message.action, message2.action)
         
     def test_response_message_creation(self):
-        """Test response message creation."""
+        """Test response message creation and handling.
+        
+        Verifies that:
+        - Response messages are properly created
+        - Original message data is preserved
+        - Status codes are correctly set
+        - Payload data is properly included
+        - Response messages maintain message chain
+        
+        This test ensures the response message system correctly
+        communicates operation results back to the frontend.
+        """
         # Create a message
         original_message = Message.create('frontend', 'canvas_click', {'x': 100, 'y': 100})
         

@@ -18,25 +18,51 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class SimpleQueueTest(unittest.TestCase):
-    """Test the core threaded queue functionality."""
+    """Test suite for the message queue system.
+    
+    This test suite verifies the core functionality of the threaded message queue,
+    including initialization, message processing, and thread management.
+    """
     
     def setUp(self):
-        """Set up test case."""
-        # Create a simple message queue with just the core functionality
+        """Set up test fixtures before each test method.
+        
+        Creates a fresh message queue instance for each test to ensure
+        test isolation and prevent state bleeding between tests.
+        """
         self.queue = SimpleQueue()
         
     def tearDown(self):
-        """Clean up after test."""
+        """Clean up after each test method.
+        
+        Ensures that the queue is properly stopped and resources are released,
+        preventing thread leaks and resource contention.
+        """
         self.queue.stop()
         
     def test_queue_initialization(self):
-        """Test queue initialization."""
+        """Test proper queue initialization.
+        
+        Verifies that:
+        - Queue is created successfully
+        - Queue starts empty
+        - Worker thread is not running initially
+        - Internal state is properly initialized
+        """
         self.assertIsNotNone(self.queue)
         self.assertEqual(len(self.queue.queue), 0)
         self.assertFalse(self.queue._worker_thread is not None and self.queue._worker_thread.is_alive())
         
     def test_start_stop(self):
-        """Test starting and stopping the queue."""
+        """Test queue start and stop operations.
+        
+        Verifies that:
+        - Queue can be started with a callback
+        - Worker thread is created and running after start
+        - Queue can be stopped gracefully
+        - Worker thread is properly terminated after stop
+        - Multiple start/stop cycles work correctly
+        """
         # Define a simple callback
         def callback(message):
             return message
@@ -54,7 +80,16 @@ class SimpleQueueTest(unittest.TestCase):
         self.assertFalse(self.queue._worker_thread is not None and self.queue._worker_thread.is_alive())
         
     def test_enqueue_and_process(self):
-        """Test enqueueing and processing messages."""
+        """Test message enqueuing and processing.
+        
+        Verifies that:
+        - Messages can be added to the queue
+        - Messages are processed in FIFO order
+        - Callback is called for each message
+        - Message processing is thread-safe
+        - No messages are lost during processing
+        - Message content is preserved during processing
+        """
         # Keep track of processed messages
         processed_messages = []
         
@@ -87,10 +122,15 @@ class SimpleQueueTest(unittest.TestCase):
             self.assertEqual(processed_messages[i], msg)
 
 class SimpleQueue:
-    """A minimal message queue implementation for testing."""
+    """A minimal message queue implementation for testing.
+    
+    This is a simplified version of the main message queue that implements
+    only the core functionality needed for testing. It provides the basic
+    operations of enqueueing messages and processing them in a separate thread.
+    """
     
     def __init__(self):
-        """Initialize the queue."""
+        """Initialize the queue with required threading primitives."""
         self.queue = []
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -109,7 +149,7 @@ class SimpleQueue:
         self._worker_thread.start()
         
     def stop(self):
-        """Stop the message queue worker thread."""
+        """Stop the message queue worker thread gracefully."""
         if self._worker_thread is None:
             return
             
@@ -118,12 +158,17 @@ class SimpleQueue:
         self._worker_thread = None
         
     def enqueue(self, message):
-        """Add a message to the queue."""
+        """Add a message to the queue in a thread-safe manner."""
         with self._lock:
             self.queue.append(message)
             
     def _worker_loop(self):
-        """Main worker loop for processing messages."""
+        """Main worker loop for processing messages.
+        
+        Continuously checks for new messages and processes them using
+        the provided callback. Implements basic error handling and
+        prevents busy waiting with a small sleep.
+        """
         while not self._stop_event.is_set():
             try:
                 # Check if there are any messages

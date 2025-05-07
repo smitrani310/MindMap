@@ -1,7 +1,17 @@
 #!/usr/bin/env python
 """
-Simple test runner for MindMap application.
-This script runs tests without requiring PyVis.
+Integration tests for basic Mind Map operations.
+
+This module tests the fundamental operations of the Mind Map application,
+including:
+- Message queue functionality
+- Basic node operations
+- State management
+- Error handling
+- System initialization
+
+The tests are designed to run without external dependencies like PyVis,
+making them suitable for quick verification of core functionality.
 """
 
 import sys
@@ -18,7 +28,19 @@ logging.basicConfig(
 logger = logging.getLogger("simple_test_runner")
 
 def run_simple_tests():
-    """Run the simple queue tests."""
+    """Run the simple queue tests.
+    
+    Executes basic message queue tests to verify core functionality.
+    Tests include:
+    - Message creation and validation
+    - Queue operations (enqueue, dequeue)
+    - Message processing
+    - Error handling
+    - State management
+    
+    Returns:
+        bool: True if all tests pass, False otherwise
+    """
     logger.info("Running simple message queue tests...")
     
     # Check if test file exists
@@ -55,7 +77,18 @@ def run_simple_tests():
         return False
 
 def check_message_queue():
-    """Check the message queue implementation."""
+    """Check the message queue implementation.
+    
+    Verifies the presence and structure of the message queue implementation.
+    Checks for:
+    - Required file existence
+    - File size and line count
+    - Presence of critical methods
+    - Basic code structure
+    
+    This function helps ensure the message queue is properly implemented
+    before running tests.
+    """
     logger.info("Checking message queue implementation...")
     
     # Check if message queue file exists
@@ -75,11 +108,11 @@ def check_message_queue():
         
         # Check for critical methods
         methods = [
-            "_worker_loop",
-            "_process_next_message",
-            "enqueue",
-            "start",
-            "stop"
+            "_worker_loop",      # Main processing loop
+            "_process_next_message",  # Message processing
+            "enqueue",           # Message addition
+            "start",            # Queue initialization
+            "stop"              # Queue cleanup
         ]
         
         for method in methods:
@@ -92,7 +125,16 @@ def check_message_queue():
         logger.error(f"Error checking message queue: {str(e)}")
 
 def main():
-    """Main function."""
+    """Main function to run basic operation tests.
+    
+    Orchestrates the testing process by:
+    1. Checking message queue implementation
+    2. Running simple queue tests
+    3. Reporting results
+    
+    Returns:
+        int: 0 for success, 1 for failure
+    """
     logger.info("Starting simple test runner...")
     
     # Check message queue implementation
