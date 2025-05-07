@@ -403,6 +403,10 @@ class MessageQueue:
             # Convert canvas coordinates to node coordinates
             node_x, node_y = canvas_to_node_coordinates(click_x, click_y, canvas_width, canvas_height)
             
+            # Ensure coordinates are numbers
+            node_x = 0 if node_x is None else node_x
+            node_y = 0 if node_y is None else node_y
+            
             # Get the next node ID
             node_id = get_next_id()
             increment_next_id()
@@ -538,11 +542,19 @@ class MessageQueue:
             if node_id is None:
                 node_id = get_next_id()
                 increment_next_id()
+            else:
+                # Try to convert to int if it's not already
+                try:
+                    node_id = int(node_id)
+                except (ValueError, TypeError):
+                    # If conversion fails, get a new ID
+                    node_id = get_next_id()
+                    increment_next_id()
             
             # Create the new node with required fields
             new_node = {
                 'id': node_id,
-                'label': message.payload.get('label', 'New Node'),
+                'label': message.payload.get('label', f"Node {node_id}"),
                 'x': message.payload.get('x', 0),
                 'y': message.payload.get('y', 0),
                 'parent': message.payload.get('parent'),
@@ -551,6 +563,14 @@ class MessageQueue:
                 'tag': message.payload.get('tag', ''),
                 'edge_type': message.payload.get('edge_type', 'default')
             }
+            
+            # Handle parent ID type if needed
+            if new_node['parent'] is not None:
+                try:
+                    new_node['parent'] = int(new_node['parent'])
+                except (ValueError, TypeError):
+                    # If parent can't be converted to int, set to None
+                    new_node['parent'] = None
             
             # Validate the node to ensure all required fields
             new_node = validate_node(new_node, get_next_id, increment_next_id)
@@ -596,28 +616,33 @@ class MessageQueue:
     def _handle_delete(self, message: Message) -> Message:
         """Handle node deletion."""
         try:
-            # Get the node ID to delete, ensuring it's an integer
+            # Get the node ID to delete
             node_id = message.payload.get('id')
             if node_id is None:
                 return create_response_message(message, 'failed', "Missing node ID")
             
+            # Try to convert node_id to int if it's not already
             try:
                 node_id = int(node_id)
             except (ValueError, TypeError):
-                # If it can't be converted to int, use as is
+                # If it can't be converted, use as is
                 pass
             
             # Find and remove the node
             ideas = get_ideas()
             logger.debug(f"Attempting to delete node with ID {node_id}. Current ideas: {len(ideas)}")
             
-            # Check if the node exists
+            # Check if the node exists - handle both string and int IDs
             node_exists = False
+            matching_ids = set()
+            
             for idea in ideas:
-                if idea.get('id') == node_id:
+                idea_id = idea.get('id')
+                # Compare with both types to handle mismatches
+                if idea_id == node_id or (isinstance(idea_id, int) and str(idea_id) == str(node_id)) or (isinstance(node_id, int) and str(node_id) == str(idea_id)):
                     node_exists = True
-                    break
-                    
+                    matching_ids.add(idea_id)
+            
             if not node_exists:
                 logger.warning(f"Node with id {node_id} not found")
                 return create_response_message(message, 'failed', f"Node with id {node_id} not found")
@@ -625,23 +650,54 @@ class MessageQueue:
             # Collect all descendants to delete
             to_delete = set()
             
-            def collect_descendants(node_id):
-                to_delete.add(node_id)
+            def collect_descendants(nid):
+                to_delete.add(nid)
                 for idea in ideas:
-                    if idea.get('parent') == node_id:
+                    parent_id = idea.get('parent')
+                    # Check if this node's parent is the one we're deleting
+                    if (parent_id == nid or 
+                        (isinstance(parent_id, int) and str(parent_id) == str(nid)) or
+                        (isinstance(nid, int) and str(nid) == str(parent_id))):
                         collect_descendants(idea.get('id'))
             
-            collect_descendants(node_id)
+            # Delete all matching nodes and their descendants
+            for mid in matching_ids:
+                collect_descendants(mid)
+            
             logger.debug(f"Will delete nodes: {to_delete}")
             
-            # Remove the nodes
-            ideas = [idea for idea in ideas if idea.get('id') not in to_delete]
-            logger.debug(f"After deletion, remaining ideas: {len(ideas)}")
-            set_ideas(ideas)
+            # Remove the nodes, handling different ID types
+            filtered_ideas = []
+            for idea in ideas:
+                idea_id = idea.get('id')
+                should_delete = False
+                
+                for del_id in to_delete:
+                    if (idea_id == del_id or 
+                        (isinstance(idea_id, int) and str(idea_id) == str(del_id)) or
+                        (isinstance(del_id, int) and str(del_id) == str(idea_id))):
+                        should_delete = True
+                        break
+                
+                if not should_delete:
+                    filtered_ideas.append(idea)
+            
+            logger.debug(f"After deletion, remaining ideas: {len(filtered_ideas)}")
+            set_ideas(filtered_ideas)
             
             # Update central node if needed
-            if get_central() in to_delete:
-                remaining_nodes = [n for n in ideas if 'id' in n]
+            central = get_central()
+            central_deleted = False
+            
+            for del_id in to_delete:
+                if (central == del_id or 
+                    (isinstance(central, int) and str(central) == str(del_id)) or
+                    (isinstance(del_id, int) and str(del_id) == str(central))):
+                    central_deleted = True
+                    break
+                    
+            if central_deleted:
+                remaining_nodes = [n for n in filtered_ideas if 'id' in n]
                 if remaining_nodes:
                     set_central(remaining_nodes[0]['id'])
                 else:
@@ -744,22 +800,39 @@ class MessageQueue:
             if node_id is None:
                 return create_response_message(message, 'failed', 'No node ID provided')
             
+            # Try to convert node_id to int if it's not already
+            try:
+                node_id = int(node_id)
+            except (ValueError, TypeError):
+                # If it can't be converted, use as is
+                pass
+            
             # Make sure the node exists
             ideas = get_ideas()
-            node = next((idea for idea in ideas if idea['id'] == node_id), None)
+            # Try to find the node by ID, handling both string and int IDs
+            node = None
+            for idea in ideas:
+                # Compare with both types to handle mismatches
+                idea_id = idea.get('id')
+                if idea_id == node_id or (isinstance(idea_id, int) and str(idea_id) == str(node_id)):
+                    node = idea
+                    break
             
             if node is None:
                 return create_response_message(message, 'failed', f'Node with ID {node_id} not found')
             
+            # Get the actual ID from the found node
+            actual_id = node.get('id')
+            
             # Set the central node
-            set_central(node_id)
+            set_central(actual_id)
             save_data(get_store())
             
             # Trigger UI update
             st.rerun()
             
             return create_response_message(message, 'completed', payload={
-                'central_node': node_id
+                'central_node': actual_id
             })
             
         except Exception as e:

@@ -22,8 +22,8 @@ def validate_node(node, get_next_id_func, increment_next_id_func):
             'urgency': 'medium',
             'tag': '',
             'edge_type': 'default',
-            'x': None,
-            'y': None
+            'x': 0,
+            'y': 0
         }
     
     # Check and add required fields if missing
@@ -37,15 +37,31 @@ def validate_node(node, get_next_id_func, increment_next_id_func):
     node.setdefault('urgency', 'medium')
     node.setdefault('tag', '')
     node.setdefault('edge_type', 'default')
-    node.setdefault('x', None)
-    node.setdefault('y', None)
+    
+    # Ensure x and y are numbers, not None
+    node.setdefault('x', 0)
+    node.setdefault('y', 0)
+    
+    if node['x'] is None:
+        node['x'] = 0
+    if node['y'] is None:
+        node['y'] = 0
     
     # Ensure the id is an integer
     if not isinstance(node['id'], int):
         try:
             node['id'] = int(node['id'])
         except (ValueError, TypeError):
+            # If conversion fails, assign a new valid ID
             node['id'] = get_next_id_func()
             increment_next_id_func()
+    
+    # Ensure parent is handled correctly - either None or an integer
+    if node['parent'] is not None:
+        try:
+            node['parent'] = int(node['parent'])
+        except (ValueError, TypeError):
+            # If parent can't be converted to int, set to None
+            node['parent'] = None
     
     return node 
