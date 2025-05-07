@@ -6,7 +6,8 @@ without requiring external dependencies or complex setups.
 """
 
 import unittest
-from src.message_format import Message, create_response_message
+import time
+from src.message_format import Message, create_response_message, validate_message
 
 class TestMessageFormat(unittest.TestCase):
     """Test suite for message format functionality."""
@@ -15,10 +16,11 @@ class TestMessageFormat(unittest.TestCase):
         """Set up test fixtures before each test method."""
         # Initialize common test data
         self.test_message_data = {
-            'action': 'test_action',
-            'source': 'test_source',
+            'action': 'canvas_click',  # Using a valid action from the allowed set
+            'source': 'frontend',      # Using a valid source from the allowed set
             'message_id': '123',
-            'payload': {'key': 'value'}
+            'payload': {'x': 100, 'y': 100},
+            'timestamp': int(time.time() * 1000)  # Current time in milliseconds
         }
 
     def test_message_creation(self):
@@ -30,10 +32,12 @@ class TestMessageFormat(unittest.TestCase):
         - Default values are applied correctly
         """
         message = Message(**self.test_message_data)
-        self.assertEqual(message.action, 'test_action')
-        self.assertEqual(message.source, 'test_source')
+        self.assertEqual(message.action, 'canvas_click')
+        self.assertEqual(message.source, 'frontend')
         self.assertEqual(message.message_id, '123')
-        self.assertEqual(message.payload, {'key': 'value'})
+        self.assertEqual(message.payload, {'x': 100, 'y': 100})
+        self.assertEqual(message.timestamp, self.test_message_data['timestamp'])
+        self.assertEqual(message.status, 'pending')  # Default value
 
     def test_message_validation(self):
         """Test message validation rules.
@@ -45,14 +49,22 @@ class TestMessageFormat(unittest.TestCase):
         - Edge cases (empty strings, None values) are handled correctly
         """
         # Valid message
-        message = Message(**self.test_message_data)
-        self.assertTrue(message.is_valid())
+        self.assertTrue(validate_message(self.test_message_data))
 
         # Invalid message (missing required field)
         invalid_data = self.test_message_data.copy()
         del invalid_data['action']
-        with self.assertRaises(ValueError):
-            Message(**invalid_data)
+        self.assertFalse(validate_message(invalid_data))
+
+        # Invalid message (invalid action)
+        invalid_data = self.test_message_data.copy()
+        invalid_data['action'] = 'invalid_action'
+        self.assertFalse(validate_message(invalid_data))
+
+        # Invalid message (invalid source)
+        invalid_data = self.test_message_data.copy()
+        invalid_data['source'] = 'invalid_source'
+        self.assertFalse(validate_message(invalid_data))
 
     def test_response_message_creation(self):
         """Test creation of response messages.
@@ -66,14 +78,16 @@ class TestMessageFormat(unittest.TestCase):
         original_msg = Message(**self.test_message_data)
         response = create_response_message(
             original_msg,
-            'success',
-            'Operation completed'
+            'completed',
+            None,
+            {'result': 'success'}
         )
         
         self.assertEqual(response.source, 'backend')
-        self.assertEqual(response.status, 'success')
-        self.assertEqual(response.error_message, 'Operation completed')
-        self.assertEqual(response.original_message_id, original_msg.message_id)
+        self.assertEqual(response.action, 'canvas_click_response')
+        self.assertEqual(response.status, 'completed')
+        self.assertIsNone(response.error)
+        self.assertEqual(response.payload['result'], 'success')
 
     def test_message_serialization(self):
         """Test message serialization and deserialization.
@@ -92,11 +106,16 @@ class TestMessageFormat(unittest.TestCase):
         self.assertIn('source', serialized)
         self.assertIn('message_id', serialized)
         self.assertIn('payload', serialized)
+        self.assertIn('timestamp', serialized)
+        self.assertIn('status', serialized)
         
         # Recreate message from serialized form
-        recreated = Message(**serialized)
+        recreated = Message.from_dict(serialized)
         self.assertEqual(recreated.action, message.action)
+        self.assertEqual(recreated.source, message.source)
         self.assertEqual(recreated.payload, message.payload)
+        self.assertEqual(recreated.timestamp, message.timestamp)
+        self.assertEqual(recreated.status, message.status)
 
 if __name__ == '__main__':
     unittest.main() 

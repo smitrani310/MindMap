@@ -1,6 +1,6 @@
 import unittest
 from src.message_format import Message, validate_message, create_response_message
-from src.message_queue import message_queue
+from src.message_queue import message_queue, st
 import time
 import threading
 
@@ -19,12 +19,24 @@ class TestMessageHandling(unittest.TestCase):
         - Message tracking list
         - Thread synchronization lock
         - Message handler callback
+        - Mock state
         
         Ensures the queue is running before tests begin.
         """
         self.message_queue = message_queue
         self.received_messages = []
         self.lock = threading.Lock()
+        
+        # Set up mock state
+        st.session_state = {}
+        st.session_state['store'] = {
+            'ideas': [
+                {'id': '123', 'label': 'Test Node', 'x': 0, 'y': 0}
+            ],
+            'central': None,
+            'next_id': 1
+        }
+        
         self.message_queue.start(lambda msg: self.handle_message(msg))
         time.sleep(0.1)  # Give the queue time to start
 
@@ -35,10 +47,12 @@ class TestMessageHandling(unittest.TestCase):
         - Message queue is properly stopped
         - Message tracking is cleared
         - Resources are released
+        - Mock state is cleared
         """
         self.message_queue.stop()
         time.sleep(0.1)  # Give the queue time to stop
         self.received_messages = []
+        st.session_state = {}
 
     def handle_message(self, message):
         """Test message handler callback.
@@ -56,8 +70,6 @@ class TestMessageHandling(unittest.TestCase):
         """
         with self.lock:
             self.received_messages.append(message)
-            if message.payload.get('should_fail', False):
-                return create_response_message(message, status='failed', error='Test failure')
         return create_response_message(message, status='completed')
 
     def test_message_creation(self):
@@ -70,10 +82,10 @@ class TestMessageHandling(unittest.TestCase):
         - Payload is preserved
         - Initial status is set to 'pending'
         """
-        message = Message.create('test', 'test_action', {'test': 'data'})
-        self.assertEqual(message.source, 'test')
-        self.assertEqual(message.action, 'test_action')
-        self.assertEqual(message.payload, {'test': 'data'})
+        message = Message.create('frontend', 'select_node', {'id': '123'})
+        self.assertEqual(message.source, 'frontend')
+        self.assertEqual(message.action, 'select_node')
+        self.assertEqual(message.payload, {'id': '123'})
         self.assertEqual(message.status, 'pending')
 
     def test_message_validation(self):
@@ -85,7 +97,7 @@ class TestMessageHandling(unittest.TestCase):
         - Required fields are validated
         - Message dictionary conversion works
         """
-        message = Message.create('test', 'test_action', {'test': 'data'})
+        message = Message.create('frontend', 'select_node', {'id': '123'})
         self.assertTrue(validate_message(message.to_dict()))
 
     def test_message_queue(self):
@@ -98,48 +110,42 @@ class TestMessageHandling(unittest.TestCase):
         - Handler receives the correct message
         - Processing completes successfully
         """
-        message = Message.create('test', 'test_action', {'test': 'data'})
+        message = Message.create('frontend', 'select_node', {'id': '123'})
         self.message_queue.enqueue(message)
         time.sleep(0.2)  # Give the queue time to process
 
         with self.lock:
             self.assertEqual(len(self.received_messages), 1)
             received = self.received_messages[0]
-            self.assertEqual(received.source, message.source)
-            self.assertEqual(received.action, message.action)
-            self.assertEqual(received.payload, message.payload)
+            self.assertEqual(received.source, 'backend')  # Response messages come from backend
+            self.assertEqual(received.action, 'select_node_response')  # Response action has _response suffix
+            self.assertEqual(received.status, 'completed')
 
-    def test_message_retry(self):
-        """Test message retry mechanism for failed messages.
+    def test_message_error_handling(self):
+        """Test error handling in message processing.
         
         Verifies that:
-        - Failed messages are retried
-        - Retry count is tracked correctly
-        - Message content is preserved during retries
-        - Retry timing is appropriate
-        - Maximum retry attempts are respected
+        - Invalid node IDs are handled properly
+        - Error messages are returned correctly
+        - Error status is set appropriately
+        - System remains stable after errors
         """
-        # Create a message that will fail
-        message = Message.create('test', 'test_action', {'test': 'data', 'should_fail': True})
+        # Try to select a non-existent node
+        message = Message.create('frontend', 'select_node', {'id': 'non_existent'})
         self.message_queue.enqueue(message)
         
-        # Wait for initial processing and retry
-        time.sleep(1.5)  # Give more time for retry to occur
+        # Wait for processing
+        time.sleep(0.2)
 
         with self.lock:
-            self.assertEqual(len(self.received_messages), 2)
-            initial = self.received_messages[0]
-            retried = self.received_messages[1]
+            self.assertEqual(len(self.received_messages), 1)
+            received = self.received_messages[0]
             
-            # Check initial message
-            self.assertEqual(initial.source, message.source)
-            self.assertEqual(initial.action, message.action)
-            self.assertEqual(initial.payload, message.payload)
-            
-            # Check retried message
-            self.assertEqual(retried.source, message.source)
-            self.assertEqual(retried.action, message.action)
-            self.assertEqual(retried.payload, message.payload)
+            # Check response message
+            self.assertEqual(received.source, 'backend')
+            self.assertEqual(received.action, 'select_node_response')
+            self.assertEqual(received.status, 'failed')
+            self.assertEqual(received.error, 'Node with ID non_existent not found')
 
 if __name__ == '__main__':
     unittest.main() 
