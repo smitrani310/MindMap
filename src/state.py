@@ -14,10 +14,12 @@ _last_save_hash = None
 
 def get_store():
     """Get the store from session state."""
-    return st.session_state.get('store', {'ideas': [], 'central': None, 'next_id': 0})
+    if 'store' not in st.session_state:
+        st.session_state['store'] = {'ideas': [], 'central': None, 'next_id': 0}
+    return st.session_state['store']
 
 def get_ideas():
-    """Get ideas from the store."""
+    """Get all ideas from the store."""
     return get_store().get('ideas', [])
 
 def get_central():
@@ -36,13 +38,30 @@ def get_current_theme():
     """Get the current theme from the store."""
     return get_store().get('current_theme', 'default')
 
-def set_ideas(ideas):
+def set_ideas(ideas_list):
     """Set the ideas in the store."""
-    get_store()['ideas'] = ideas
-
+    # Import utility function
+    from src.node_utils import validate_node
+    
+    # Validate each node in the list
+    validated_ideas = [validate_node(node, get_next_id, increment_next_id) for node in ideas_list]
+    
+    # Update the store with validated nodes
+    get_store()['ideas'] = validated_ideas
+    
 def add_idea(node):
     """Add an idea to the store."""
-    get_store()['ideas'].append(node)
+    store = get_store()
+    if 'ideas' not in store:
+        store['ideas'] = []
+    
+    # Import utility function
+    from src.node_utils import validate_node
+    
+    # Validate the node before adding
+    validated_node = validate_node(node, get_next_id, increment_next_id)
+    store['ideas'].append(validated_node)
+    save_data(store)  # Save state changes automatically
 
 def set_central(mid):
     """Set the central node ID in the store."""
@@ -52,29 +71,41 @@ def set_current_theme(theme_name):
     """Set the current theme in the store."""
     get_store()['current_theme'] = theme_name
 
+def update_idea(node_id, updates):
+    """Update an idea in the store."""
+    store = get_store()
+    ideas = store.get('ideas', [])
+    for node in ideas:
+        if node['id'] == node_id:
+            node.update(updates)
+            break
+    store['ideas'] = ideas
+    save_data(store)  # Save state changes automatically
+
 def save_data(data):
-    """Save data to JSON file, with caching to prevent redundant writes"""
+    """Save data to JSON file, with caching to prevent redundant writes."""
     global _last_save_hash
     
     try:
-        # Create a hash of the data to check if it has changed
+        # Save to session state
+        st.session_state['store'] = data
+        
+        # Calculate hash of the current data
         data_str = json.dumps(data, sort_keys=True)
         current_hash = hashlib.md5(data_str.encode()).hexdigest()
         
-        # Only save if the data has changed
+        # Only write to file if data has changed
         if current_hash != _last_save_hash:
+            logger.debug(f"Data changed, saving to {DATA_FILE}")
             with open(DATA_FILE, 'w') as f:
-                json.dump(data, f)
+                json.dump(data, f, indent=2)
             _last_save_hash = current_hash
-            logger.info("Data saved successfully")
-        else:
-            logger.debug("Skipping save - data unchanged")
-    except PermissionError as e:
-        logger.error(f"Permission error saving data file: {str(e)}")
-        st.error(ERROR_MESSAGES['permission_error'])
+            logger.debug("Save complete")
+        
+        return True
     except Exception as e:
         logger.error(f"Error saving data: {str(e)}")
-        st.error(ERROR_MESSAGES['save_data'].format(error=str(e)))
+        return False
 
 def load_data():
     """Load data from JSON file if it exists"""

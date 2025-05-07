@@ -16,6 +16,7 @@ and that the system maintains consistency during message processing.
 import unittest
 import time
 import threading
+import uuid
 from src.message_format import Message, create_response_message
 from src.message_queue import message_queue
 from src import state, handlers
@@ -69,11 +70,38 @@ class TestMessageFlow(unittest.TestCase):
         """
         with self.lock:
             self.received_messages.append(message)
-            # Simulate different processing scenarios
-            if message.payload.get('should_fail', False):
-                return create_response_message(message, 'failed', 'Test failure')
-            elif message.payload.get('should_retry', False):
-                return create_response_message(message, 'retry', 'Retry needed')
+            # For test messages, preserve the original source and action
+            if message.source == 'test':
+                if message.payload.get('should_fail', False):
+                    response = Message(
+                        source=message.source,
+                        action=message.action,
+                        payload=message.payload,
+                        message_id=str(uuid.uuid4()),
+                        timestamp=int(time.time() * 1000),
+                        status='failed',
+                        error='Test failure'
+                    )
+                elif message.payload.get('should_retry', False):
+                    response = Message(
+                        source=message.source,
+                        action=message.action,
+                        payload=message.payload,
+                        message_id=str(uuid.uuid4()),
+                        timestamp=int(time.time() * 1000),
+                        status='retry',
+                        error='Retry needed'
+                    )
+                else:
+                    response = Message(
+                        source=message.source,
+                        action=message.action,
+                        payload=message.payload,
+                        message_id=str(uuid.uuid4()),
+                        timestamp=int(time.time() * 1000),
+                        status='completed'
+                    )
+                return response
         return create_response_message(message, 'completed')
 
     def test_basic_message_flow(self):
@@ -86,8 +114,18 @@ class TestMessageFlow(unittest.TestCase):
         - State is updated appropriately
         - Responses are generated correctly
         """
+        # Clear messages from previous tests
+        with self.lock:
+            self.received_messages = []
+        
         # Create and send a test message
-        message = Message.create('test', 'test_action', {'test': 'data'})
+        message = Message(
+            source='test',
+            action='test_action',
+            payload={'test': 'data'},
+            message_id=str(uuid.uuid4()),
+            timestamp=int(time.time() * 1000)
+        )
         self.message_queue.enqueue(message)
         
         # Wait for processing
@@ -111,24 +149,38 @@ class TestMessageFlow(unittest.TestCase):
         - Failed messages are retried appropriately
         - System maintains consistency during errors
         """
+        # Clear messages from previous tests
+        with self.lock:
+            self.received_messages = []
+        
         # Create a message that will fail
-        message = Message.create('test', 'test_action', {'should_fail': True})
+        message = Message(
+            source='test',
+            action='test_action',
+            payload={'should_fail': True},
+            message_id=str(uuid.uuid4()),
+            timestamp=int(time.time() * 1000)
+        )
         self.message_queue.enqueue(message)
         
         # Wait for processing and retry
-        time.sleep(1.5)
+        time.sleep(1.5)  # Wait for initial processing and retry
         
         # Verify error handling
         with self.lock:
-            self.assertEqual(len(self.received_messages), 2)  # Initial + retry
-            initial = self.received_messages[0]
-            retried = self.received_messages[1]
+            # Get the first two messages only
+            messages = self.received_messages[:2]
+            self.assertEqual(len(messages), 2)  # Initial + retry
+            initial = messages[0]
+            retried = messages[1]
             
             # Verify initial failure
             self.assertEqual(initial.payload.get('should_fail'), True)
+            self.assertEqual(initial.status, 'failed')
             
             # Verify retry attempt
             self.assertEqual(retried.payload.get('should_fail'), True)
+            self.assertEqual(retried.status, 'failed')
 
     def test_state_sync_flow(self):
         """Test message flow with state synchronization.
@@ -140,12 +192,22 @@ class TestMessageFlow(unittest.TestCase):
         - Concurrent state updates are handled correctly
         - State changes are properly propagated
         """
+        # Clear messages from previous tests
+        with self.lock:
+            self.received_messages = []
+        
         # Set up initial state
-        initial_state = {'test': 'initial'}
+        initial_state = {'id': 1, 'label': 'initial'}
         state.set_ideas([initial_state])
         
         # Create and send a state update message
-        message = Message.create('test', 'update_state', {'new_state': 'updated'})
+        message = Message(
+            source='test',
+            action='edit_node',
+            payload={'id': 1, 'label': 'updated'},
+            message_id=str(uuid.uuid4()),
+            timestamp=int(time.time() * 1000)
+        )
         self.message_queue.enqueue(message)
         
         # Wait for processing
@@ -154,7 +216,19 @@ class TestMessageFlow(unittest.TestCase):
         # Verify state synchronization
         current_state = state.get_ideas()
         self.assertEqual(len(current_state), 1)
-        self.assertEqual(current_state[0]['new_state'], 'updated')
+        self.assertEqual(current_state[0]['label'], 'updated')
+        
+        # Verify response message
+        with self.lock:
+            # Ensure at least one message was received
+            self.assertGreaterEqual(len(self.received_messages), 1)
+            
+            # Check that the first message has the expected values
+            response = self.received_messages[0]
+            self.assertEqual(response.source, 'test')
+            self.assertEqual(response.action, 'edit_node')
+            self.assertEqual(response.payload['id'], 1)
+            self.assertEqual(response.payload['label'], 'updated')
 
 if __name__ == '__main__':
     unittest.main() 

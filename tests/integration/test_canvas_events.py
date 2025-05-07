@@ -157,6 +157,10 @@ class TestCanvasActions(unittest.TestCase):
             }
         ]
         
+        logger.debug("Test nodes setup:")
+        for node in self.test_nodes:
+            logger.debug(f"Node ID: {node['id']}, Position: ({node['x']}, {node['y']})")
+        
         # Initialize store with test nodes
         store = {
             'ideas': self.test_nodes,
@@ -184,6 +188,13 @@ class TestCanvasActions(unittest.TestCase):
         self.save_data_patcher = patch('src.state.save_data')
         self.mock_save_data = self.save_data_patcher.start()
         
+        # Verify state setup is correct
+        ideas_after_setup = get_ideas()
+        logger.debug(f"Store after setup: {store}")
+        logger.debug(f"Ideas count after setup: {len(ideas_after_setup)}")
+        for node in ideas_after_setup:
+            logger.debug(f"Node in store: ID: {node.get('id')}, Position: ({node.get('x')}, {node.get('y')})")
+            
     def tearDown(self):
         """Clean up test environment after each test.
         
@@ -243,9 +254,22 @@ class TestCanvasActions(unittest.TestCase):
         """
         logger.info("Running canvas click test")
         
+        # Check that the nodes are properly set in the store
+        ideas = get_ideas()
+        logger.debug(f"Nodes in store at test start: {len(ideas)}")
+        for node in ideas:
+            logger.debug(f"Node in store before click: ID: {node.get('id')}, Position: ({node.get('x')}, {node.get('y')})")
+            
         canvas_width = 800
         canvas_height = 600
         
+        # Calculate expected canvas position of center node (should be at 400, 300)
+        center_node = next((n for n in ideas if n.get('id') == 1), None)
+        if center_node:
+            expected_canvas_x = center_node['x'] + canvas_width/2
+            expected_canvas_y = center_node['y'] + canvas_height/2
+            logger.debug(f"Expected canvas position of center node: ({expected_canvas_x}, {expected_canvas_y})")
+            
         click_message = Message.create('frontend', 'canvas_click', {
             'x': 400,  # Canvas center X
             'y': 300,  # Canvas center Y
@@ -258,6 +282,15 @@ class TestCanvasActions(unittest.TestCase):
         logger.debug(f"Canvas dimensions: {canvas_width}x{canvas_height}")
         logger.debug(f"Click position: (400, 300)")
         
+        # Directly check distance calculation for debug purposes
+        for node in ideas:
+            if 'id' in node and node.get('x') is not None and node.get('y') is not None:
+                node_canvas_x = node['x'] + canvas_width/2
+                node_canvas_y = node['y'] + canvas_height/2
+                distance = ((node_canvas_x - 400) ** 2 + (node_canvas_y - 300) ** 2) ** 0.5
+                logger.debug(f"Manual distance calculation - Node {node['id']}: {distance}")
+        
+        # Process the message
         response = message_queue._process_next_message(click_message)
         
         logger.debug(f"Click response: {response}")

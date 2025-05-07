@@ -25,6 +25,12 @@ import colorsys
 from typing import List, Dict, Optional, Tuple, Set
 from copy import deepcopy
 import atexit
+import platform
+import re
+import sys
+import time
+import uuid
+from collections import Counter
 
 import streamlit as st
 from pyvis.network import Network
@@ -44,8 +50,10 @@ from src.history import save_state_to_history, can_undo, can_redo, perform_undo,
 from src.utils import hex_to_rgb, get_theme, recalc_size, get_edge_color, get_urgency_color, get_tag_color
 from src.themes import THEMES, TAGS, URGENCY_SIZE
 from src.handlers import handle_message, handle_exception, is_circular
-from src.message_queue import message_queue
+from src.message_queue import message_queue, MessageQueue, Message
 from src.message_format import Message, validate_message, create_response_message
+from src.logging_setup import get_logger
+from src.node_utils import validate_node
 
 # Configure logging
 import os
@@ -527,8 +535,8 @@ try:
                 save_state_to_history()
                 count = 0
                 for node in ideas:
-                    if search_q.lower() in node['label'].lower():
-                        node['label'] = node['label'].replace(search_q, replace_q)
+                    if search_q.lower() in node.get('label', 'Untitled Node').lower():
+                        node['label'] = node.get('label', 'Untitled Node').replace(search_q, replace_q)
                         count += 1
                     if 'description' in node and search_q.lower() in node['description'].lower():
                         node['description'] = node['description'].replace(search_q, replace_q)
@@ -550,22 +558,32 @@ try:
                     logger.error(f"Import failed: JSON not a list. Filename: {uploaded.name}")
                 else:
                     save_state_to_history()  # Save current state before import
-                    label_map = {item['label'].strip().lower(): item['id'] for item in data}
-                    for item in data:
-                        item.setdefault('x', None)
-                        item.setdefault('y', None)
-                        item.setdefault('description', '')
-                        item.setdefault('tag', '')
-                        item.setdefault('edge_type', 'default')
+                    
+                    # First pass: validate all nodes and ensure they have IDs
+                    validated_data = [validate_node(item, get_next_id, increment_next_id) for item in data]
+                    
+                    # Second pass: create a label_map with valid nodes
+                    label_map = {item.get('label', '').strip().lower(): item.get('id') 
+                                for item in validated_data 
+                                if item.get('label') and item.get('id') is not None}
+                    
+                    # Third pass: handle parent relationships
+                    for item in validated_data:
                         p = item.get('parent')
                         if isinstance(p, str):
                             item['parent'] = label_map.get(p.strip().lower())
                         recalc_size(item)
-                    set_ideas(data)
-                    get_store()['next_id'] = max((i['id'] for i in data), default=-1) + 1
-                    set_central(next((i['id'] for i in data if i.get('is_central')), None))
+                    
+                    set_ideas(validated_data)
+                    
+                    # Safely calculate next_id by filtering out items without an id
+                    valid_ids = [i.get('id') for i in validated_data if i.get('id') is not None]
+                    get_store()['next_id'] = max(valid_ids, default=-1) + 1
+                    
+                    # Set central node safely
+                    set_central(next((i.get('id') for i in validated_data if i.get('is_central') and i.get('id') is not None), None))
                     save_data(get_store())
-                    logger.info(f"Successfully imported {len(data)} nodes from {uploaded.name}")
+                    logger.info(f"Successfully imported {len(validated_data)} nodes from {uploaded.name}")
                     st.success("Imported bubbles from JSON")
             except Exception as e:
                 handle_exception(e)
@@ -575,7 +593,8 @@ try:
         if ideas:
             export = [item.copy() for item in ideas]
             for item in export:
-                item['is_central'] = (item['id'] == get_central())
+                # Use get() method with a default of None to safely access the id
+                item['is_central'] = (item.get('id') == get_central())
                 
             # Create filename with timestamp
             export_filename = f"mindmap_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -743,7 +762,7 @@ try:
             if node_search:
                 filtered_ideas = [
                     node for node in ideas 
-                    if node_search.lower() in node['label'].lower() or 
+                    if node_search.lower() in node.get('label', 'Untitled Node').lower() or 
                     (node.get('description') and node_search.lower() in node['description'].lower()) or
                     (node.get('tag') and node_search.lower() in node['tag'].lower())
                 ]
@@ -757,9 +776,13 @@ try:
             
             # List the filtered nodes
             for node in filtered_ideas:
+                # Skip any malformed nodes without an ID
+                if 'id' not in node:
+                    continue
+                    
                 # More balanced column widths for better alignment
                 col1, col2, col3, col4 = st.columns([2.5, 1, 1, 1])
-                label_display = node['label']
+                label_display = node.get('label', 'Untitled Node')
                 if node.get('tag'):
                     label_display = f"[{node['tag']}] {label_display}"
                 col1.write(label_display)
@@ -780,23 +803,23 @@ try:
     # Handle button actions from session state
     if 'center_node' in st.session_state:
         node_id = st.session_state.pop('center_node')
-        if node_id in {n['id'] for n in ideas}:
+        if node_id in {n['id'] for n in ideas if 'id' in n}:
             set_central(node_id)
             st.rerun()
 
     if 'delete_node' in st.session_state:
         node_id = st.session_state.pop('delete_node')
-        if node_id in {n['id'] for n in ideas}:
+        if node_id in {n['id'] for n in ideas if 'id' in n}:
             save_state_to_history()
             to_remove = set()
 
             def collect_descendants(node_id):
                 to_remove.add(node_id)
-                for child in [n for n in ideas if n.get('parent') == node_id]:
+                for child in [n for n in ideas if 'id' in n and n.get('parent') == node_id]:
                     collect_descendants(child['id'])
 
             collect_descendants(node_id)
-            set_ideas([n for n in ideas if n['id'] not in to_remove])
+            set_ideas([n for n in ideas if 'id' not in n or n['id'] not in to_remove])
             if get_central() in to_remove:
                 set_central(None)
             if st.session_state.get('selected_node') in to_remove:
@@ -806,12 +829,12 @@ try:
     # Node Edit Modal
     if 'edit_node' in st.session_state and st.session_state['edit_node'] is not None:
         node_id = st.session_state['edit_node']
-        node = next((n for n in ideas if n['id'] == node_id), None)
+        node = next((n for n in ideas if 'id' in n and n['id'] == node_id), None)
 
         if node:
             with st.form(key=f"edit_node_{node_id}"):
-                st.subheader(f"Edit Node: {node['label']}")
-                new_label = st.text_input("Label", value=node['label'])
+                st.subheader(f"Edit Node: {node.get('label', 'Untitled Node')}")
+                new_label = st.text_input("Label", value=node.get('label', 'Untitled Node'))
                 new_description = st.text_area("Description", value=node.get('description', ''), height=150)
                 col1, col2 = st.columns(2)
                 new_urgency = col1.selectbox("Urgency",
@@ -836,7 +859,7 @@ try:
                 if node['parent'] is not None:
                     parent_node = next((n for n in ideas if n['id'] == node['parent']), None)
                     if parent_node:
-                        current_parent = parent_node['label']
+                        current_parent = parent_node.get('label', 'Untitled Node')
                     else:
                         current_parent = ""
                     new_parent = st.text_input("Parent label (blank → no parent)", value=current_parent)
@@ -953,13 +976,17 @@ try:
     )
 
     # Add nodes and edges to the network
-    id_set = {n['id'] for n in ideas}
+    id_set = {n['id'] for n in ideas if 'id' in n}
     
     # Get central node
     central_id = get_central()
     logger.info(f"Creating nodes with central node ID: {central_id}")
     
     for n in ideas:
+        # Skip nodes without an id
+        if 'id' not in n:
+            continue
+            
         recalc_size(n)
 
         # Get the color mode from settings
@@ -1026,6 +1053,10 @@ try:
 
     # Add edges between nodes
     for n in ideas:
+        # Skip nodes without an id
+        if 'id' not in n:
+            continue
+            
         pid = n.get('parent')
         if pid in id_set:
             edge_type = n.get('edge_type', 'default')
@@ -1393,7 +1424,7 @@ try:
                                 for node in nodes_with_pos:
                                     node_x = node.get('x', 0)
                                     node_y = node.get('y', 0)
-                                    logger.debug(f"Node {node['id']} ({node['label']}): raw position ({node_x}, {node_y})")
+                                    logger.debug(f"Node {node['id']} ({node.get('label', 'Untitled Node')}): raw position ({node_x}, {node_y})")
                                     
                                     # Scale the coordinates to match the canvas
                                     node_canvas_x = (node_x + canvas_width/2)
@@ -1416,7 +1447,7 @@ try:
                                 click_threshold = base_threshold + node_size
                                 
                                 if closest_node:
-                                    logger.info(f"Closest node: {closest_node['id']} ({closest_node['label']}) at distance {min_distance:.2f}, threshold: {click_threshold:.2f}")
+                                    logger.info(f"Closest node: {closest_node['id']} ({closest_node.get('label', 'Untitled Node')}) at distance {min_distance:.2f}, threshold: {click_threshold:.2f}")
                                 
                                 if closest_node and min_distance < click_threshold:
                                     node_id = closest_node['id']
@@ -1448,17 +1479,17 @@ try:
                                         # Remove node and its descendants
                                         to_remove = set()
                                         
-                                        def collect_descendants(nid):
-                                            to_remove.add(nid)
-                                            for child in [n for n in ideas if n.get('parent') == nid]:
+                                        def collect_descendants(node_id):
+                                            to_remove.add(node_id)
+                                            for child in [n for n in ideas if 'id' in n and n.get('parent') == node_id]:
                                                 collect_descendants(child['id'])
                                         
                                         collect_descendants(node_id)
-                                        set_ideas([n for n in ideas if n['id'] not in to_remove])
+                                        set_ideas([n for n in ideas if 'id' not in n or n['id'] not in to_remove])
                                         
                                         # Update central node if needed
                                         if get_central() in to_remove:
-                                            new_central = next((n['id'] for n in ideas if n['id'] not in to_remove), None)
+                                            new_central = next((n['id'] for n in ideas if 'id' not in n or n['id'] not in to_remove), None)
                                             set_central(new_central)
                                         
                                         save_data(get_store())
@@ -1466,7 +1497,7 @@ try:
                                         canvas_action_successful = True
                                 else:
                                     if closest_node:
-                                        logger.warning(f"No node found near click coordinates (closest: {closest_node['label']} at distance: {min_distance:.2f}, threshold: {click_threshold:.2f})")
+                                        logger.warning(f"No node found near click coordinates (closest: {closest_node.get('label', 'Untitled Node')} at distance: {min_distance:.2f}, threshold: {click_threshold:.2f})")
                                     else:
                                         logger.warning(f"No nodes found near click coordinates")
                             
@@ -1497,17 +1528,19 @@ try:
     if get_central() is not None:
         central_id = get_central()
         logger.info(f"Using central node ID: {central_id}")
-        display_node = next((n for n in ideas if n['id'] == central_id), None)
+        display_node = next((n for n in ideas if 'id' in n and n['id'] == central_id), None)
         logger.info(f"Found node for central ID: {display_node is not None}")
     
     # Fallback: If no central node, pick the first node if available
     if display_node is None and ideas:
-        display_node = ideas[0]
-        selected_node_temp = display_node['id']
-        logger.info(f"No central node, using fallback node ID: {selected_node_temp}")
-        # Set as central node
-        set_central(selected_node_temp)
-    
+        # Find first node with a valid ID
+        display_node = next((n for n in ideas if 'id' in n), None)
+        if display_node:
+            selected_node_temp = display_node['id']
+            logger.info(f"No central node, using fallback node ID: {selected_node_temp}")
+            # Set as central node
+            set_central(selected_node_temp)
+
     # Debug output for ideas
     logger.info(f"Total nodes in ideas: {len(ideas)}")
     if not ideas:
@@ -1531,9 +1564,9 @@ try:
             st.rerun()
 
     if display_node:
-        logger.info(f"Displaying node: {display_node['id']} - {display_node['label']}")
+        logger.info(f"Displaying node: {display_node['id']} - {display_node.get('label', 'Untitled Node')}")
         # Display node with a clean style, matching the center button approach
-        st.subheader(f"📌 Selected: {display_node['label']}")
+        st.subheader(f"📌 Selected: {display_node.get('label', 'Untitled Node')}")
 
         # Display node details
         if display_node.get('tag'):
