@@ -1,445 +1,449 @@
 import unittest
-import time
-from src.message_format import Message
-from src.message_queue import message_queue
-import threading
-import json
 import pytest
+import time
+import logging
+import json
 from datetime import datetime
-from src.handlers import handle_message
-from src.state import set_ideas, get_ideas
-import uuid
-from tests.test_utils import mock_streamlit, set_test_ideas, get_test_ideas, set_test_central
+import threading
+from unittest.mock import patch, MagicMock
 
-# Import fixture to patch st
-pytest.importorskip("tests.test_utils")
+# Import app modules
+from src.message_format import Message, create_response_message
+from src.message_queue import message_queue
+from src.state import get_store, get_ideas, set_ideas, get_central, set_central, add_idea
+from src.state import get_next_id, increment_next_id, save_data
+from src.utils import recalc_size
+from src.handlers import handle_message, is_circular
 
-class TestCanvasEvents(unittest.TestCase):
+# Configure logging for tests
+logging.basicConfig(level=logging.DEBUG, 
+                  format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Mock streamlit for testing
+class MockStreamlit:
+    """Mock streamlit for testing."""
+    def __init__(self):
+        self.session_state = {}
+        self.rerun_called = False
+        
+    def rerun(self):
+        self.rerun_called = True
+
+# Create mock st
+mock_st = MockStreamlit()
+
+# Mock state functions if not available
+def mock_get_ideas():
+    """Mock implementation of get_ideas"""
+    return mock_st.session_state.get('ideas', [])
+
+def mock_set_ideas(ideas):
+    """Mock implementation of set_ideas"""
+    mock_st.session_state['ideas'] = ideas
+
+def mock_get_central():
+    """Mock implementation of get_central"""
+    return mock_st.session_state.get('central')
+
+def mock_set_central(node_id):
+    """Mock implementation of set_central"""
+    mock_st.session_state['central'] = node_id
+
+# Patch modules that use streamlit
+@pytest.fixture(autouse=True)
+def patch_streamlit():
+    # Import the modules we need to patch
+    import sys
+    from src import message_queue
+    from src import handlers
+    from src import state
+    
+    # Inject mock_st if it doesn't exist
+    if not hasattr(message_queue, 'st'):
+        setattr(message_queue, 'st', mock_st)
+    
+    if not hasattr(handlers, 'st'):
+        setattr(handlers, 'st', mock_st)
+        
+    # Also patch the state functions used in message_queue
+    with patch('src.message_queue.st', mock_st):
+        with patch('src.handlers.st', mock_st):
+            with patch('src.message_queue.get_ideas', mock_get_ideas):
+                with patch('src.message_queue.get_central', mock_get_central):
+                    with patch('src.message_queue.set_central', mock_set_central):
+                        yield
+
+
+class TestCanvasActions(unittest.TestCase):
+    """Test canvas actions and message queue functionality."""
+    
     def setUp(self):
-        self.message_queue = message_queue
-        self.received_messages = []
-        self.processed_actions = []
-        self.lock = threading.Lock()
+        """Set up test case."""
+        # Clear mock streamlit state
+        mock_st.session_state = {}
+        mock_st.rerun_called = False
         
-        # Patch the _process_next_message method to handle our test messages
-        self.original_process_next_message = self.message_queue._process_next_message
-        self.message_queue._process_next_message = self._mock_process_next_message
+        # Clear message queue
+        with message_queue._lock:
+            message_queue.queue = []
         
-        # Initialize a queue for our test messages
-        self.test_message_queue = []
-
-    def tearDown(self):
-        # Restore original method
-        self.message_queue._process_next_message = self.original_process_next_message
-        self.received_messages = []
-        self.processed_actions = []
-        self.test_message_queue = []
-
-    def _mock_process_next_message(self, message):
-        """Mock implementation that calls our handler directly."""
-        return self.handle_message(message)
-
-    def handle_message(self, message):
-        """Handle incoming messages and simulate graph actions."""
-        with self.lock:
-            # Store the original message
-            self.received_messages.append(message)
-            
-            # Generate a response based on the message type
-            response = None
-            
-            # Convert canvas events to node actions
-            if message.action == 'canvas_click':
-                # Find nearest node and convert to view_node action
-                node_id = self.find_nearest_node(message.payload['x'], message.payload['y'])
-                if node_id:
-                    self.processed_actions.append(('view', node_id))
-                    response = Message.create('backend', 'view_node_response', {
-                        'node_details': {'id': node_id, 'title': 'Test Node'}
-                    })
-            
-            elif message.action == 'canvas_dblclick':
-                # Find nearest node and convert to edit_node action
-                node_id = self.find_nearest_node(message.payload['x'], message.payload['y'])
-                if node_id:
-                    self.processed_actions.append(('edit', node_id))
-                    response = Message.create('backend', 'edit_node_response', {
-                        'updated_node': {'id': node_id, 'title': 'Updated Node'}
-                    })
-            
-            elif message.action == 'canvas_contextmenu':
-                # Find nearest node and convert to delete_node action
-                node_id = self.find_nearest_node(message.payload['x'], message.payload['y'])
-                if node_id:
-                    self.processed_actions.append(('delete', node_id))
-                    response = Message.create('backend', 'delete_node_response', {})
-            
-            if response is None:
-                response = Message.create('backend', 'error_response', {
-                    'error': 'Unknown action'
-                })
-            
-            # Clear the received_messages and replace with the response for test verification
-            self.received_messages = [response]
-            
-            return response
-
-    def find_nearest_node(self, x, y):
-        """Simulate finding the nearest node to given coordinates."""
-        # In a real implementation, this would calculate distances to all nodes
-        # For testing, we'll return a fixed node ID
-        return 'test_node_1'
-        
-    def enqueue(self, message):
-        """Enqueue a message and process it immediately for testing."""
-        response = self._mock_process_next_message(message)
-        return response
-
-    def test_canvas_click_conversion(self):
-        """Test conversion of canvas click to node view action."""
-        # Simulate canvas click
-        message = Message.create('frontend', 'canvas_click', {
-            'x': 100,
-            'y': 100,
-            'canvasWidth': 800,
-            'canvasHeight': 600,
-            'timestamp': datetime.now().timestamp() * 1000
-        })
-        self.enqueue(message)
-
-        with self.lock:
-            self.assertEqual(len(self.processed_actions), 1)
-            action, node_id = self.processed_actions[0]
-            self.assertEqual(action, 'view')
-            self.assertEqual(node_id, 'test_node_1')
-            
-            # Verify response message
-            self.assertEqual(len(self.received_messages), 1)
-            response = self.received_messages[0]
-            self.assertEqual(response.action, 'view_node_response')
-            self.assertIn('node_details', response.payload)
-
-    def test_canvas_dblclick_conversion(self):
-        """Test conversion of canvas double-click to node edit action."""
-        # Simulate canvas double-click
-        message = Message.create('frontend', 'canvas_dblclick', {
-            'x': 100,
-            'y': 100,
-            'canvasWidth': 800,
-            'canvasHeight': 600,
-            'timestamp': datetime.now().timestamp() * 1000
-        })
-        self.enqueue(message)
-
-        with self.lock:
-            self.assertEqual(len(self.processed_actions), 1)
-            action, node_id = self.processed_actions[0]
-            self.assertEqual(action, 'edit')
-            self.assertEqual(node_id, 'test_node_1')
-            
-            # Verify response message
-            self.assertEqual(len(self.received_messages), 1)
-            response = self.received_messages[0]
-            self.assertEqual(response.action, 'edit_node_response')
-            self.assertIn('updated_node', response.payload)
-
-    def test_canvas_contextmenu_conversion(self):
-        """Test conversion of canvas context menu to node delete action."""
-        # Simulate canvas context menu
-        message = Message.create('frontend', 'canvas_contextmenu', {
-            'x': 100,
-            'y': 100,
-            'canvasWidth': 800,
-            'canvasHeight': 600,
-            'timestamp': datetime.now().timestamp() * 1000
-        })
-        self.enqueue(message)
-
-        with self.lock:
-            self.assertEqual(len(self.processed_actions), 1)
-            action, node_id = self.processed_actions[0]
-            self.assertEqual(action, 'delete')
-            self.assertEqual(node_id, 'test_node_1')
-            
-            # Verify response message
-            self.assertEqual(len(self.received_messages), 1)
-            response = self.received_messages[0]
-            self.assertEqual(response.action, 'delete_node_response')
-
-    def test_canvas_event_sequence(self):
-        """Test a sequence of canvas events to verify proper conversion."""
-        events = [
-            ('canvas_click', {'x': 100, 'y': 100}),
-            ('canvas_dblclick', {'x': 150, 'y': 150}),
-            ('canvas_contextmenu', {'x': 200, 'y': 200})
+        # Set up sample nodes with positions for testing
+        self.test_nodes = [
+            {
+                'id': 1,
+                'label': 'Center Node',
+                'description': 'Center test node',
+                'urgency': 'medium',
+                'tag': 'test',
+                'x': 0,  # Center of canvas
+                'y': 0,
+                'size': 20,
+                'parent': None
+            },
+            {
+                'id': 2,
+                'label': 'Top Right Node',
+                'description': 'Top right test node',
+                'urgency': 'high',
+                'tag': 'test',
+                'x': 200,  # Top right
+                'y': -150,
+                'size': 25,
+                'parent': 1
+            },
+            {
+                'id': 3,
+                'label': 'Bottom Left Node',
+                'description': 'Bottom left test node',
+                'urgency': 'low',
+                'tag': 'test', 
+                'x': -200,  # Bottom left
+                'y': 150, 
+                'size': 15,
+                'parent': 1
+            }
         ]
-
-        # Execute events in sequence
-        for event_type, payload in events:
-            message = Message.create('frontend', event_type, {
-                **payload,
-                'canvasWidth': 800,
-                'canvasHeight': 600,
-                'timestamp': datetime.now().timestamp() * 1000
-            })
-            self.enqueue(message)
-
-        with self.lock:
-            # Verify all events were processed
-            self.assertEqual(len(self.processed_actions), len(events))
-            
-            # Verify action sequence
-            expected_actions = ['view', 'edit', 'delete']
-            for i, (action, _) in enumerate(self.processed_actions):
-                self.assertEqual(action, expected_actions[i])
-            
-            # Verify all messages were processed successfully
-            for response in self.received_messages:
-                self.assertTrue(response.action.endswith('_response'))
-
-def create_test_message(action, payload):
-    """Helper function to create test messages with required fields."""
-    return Message(
-        message_id=str(uuid.uuid4()),
-        source='frontend',
-        action=action,
-        payload=payload,
-        timestamp=datetime.now().timestamp() * 1000
-    )
-
-def test_canvas_coordinate_transformation():
-    """Test coordinate transformation between canvas and backend coordinates."""
-    # Create test node at center
-    test_nodes = [
-        {
-            'id': 1,
-            'label': 'Center Node',
-            'x': 0,
-            'y': 0
+        
+        # Initialize store with test nodes
+        store = {
+            'ideas': self.test_nodes,
+            'central': 1,
+            'next_id': 4,
+            'history': [],
+            'history_index': -1,
+            'settings': {'edge_length': 100, 'spring_strength': 0.5, 'size_multiplier': 1.0}
         }
-    ]
-    set_ideas(test_nodes)
-    
-    # Test click coordinates
-    canvas_width = 800
-    canvas_height = 600
-    click_x = 400  # Center of canvas
-    click_y = 300  # Center of canvas
-    
-    click_msg = create_test_message(
-        'canvas_click',
-        {
+        
+        # Set the store
+        with patch('src.state.get_store', return_value=store):
+            set_ideas(self.test_nodes)
+            set_central(1)
+        
+        # Set up initial store access pattern
+        self.original_get_store = get_store
+        self.store_patcher = patch('src.state.get_store', return_value=store)
+        self.mock_get_store = self.store_patcher.start()
+        
+        # Save original methods
+        self.original_save_data = save_data
+        
+        # Patch save_data to do nothing in tests
+        self.save_data_patcher = patch('src.state.save_data')
+        self.mock_save_data = self.save_data_patcher.start()
+        
+    def tearDown(self):
+        """Clean up after test case."""
+        # Stop all patches
+        self.store_patcher.stop()
+        self.save_data_patcher.stop()
+        
+    def test_message_queue_initialization(self):
+        """Test message queue initialization."""
+        self.assertIsNotNone(message_queue)
+        self.assertIsInstance(message_queue.queue, list)
+        
+    def test_message_enqueue(self):
+        """Test enqueueing a message in the queue."""
+        message = Message.create('test', 'test_action', {'test': 'data'})
+        message_queue.enqueue(message)
+        
+        # Check message was added to the queue
+        with message_queue._lock:
+            self.assertEqual(len(message_queue.queue), 1)
+            
+    def test_process_next_message(self):
+        """Test message processing directly."""
+        # Create a test message
+        message = Message.create('test', 'center_node', {'id': 1})
+        
+        # Process the message
+        response = message_queue._process_next_message(message)
+        
+        # Verify response
+        self.assertIsNotNone(response)
+        self.assertEqual(response.status, 'completed')
+        
+    def test_canvas_click_processing(self):
+        """Test processing of canvas click event."""
+        logger.info("Running canvas click test")
+        
+        # Create a canvas click message targeting the center node
+        # Canvas width/height are important for coordinate calculations
+        canvas_width = 800
+        canvas_height = 600
+        
+        # Click coordinates for center node (400, 300 is center of an 800x600 canvas)
+        click_message = Message.create('frontend', 'canvas_click', {
+            'x': 400,  # Canvas center X
+            'y': 300,  # Canvas center Y
+            'canvasWidth': canvas_width,
+            'canvasHeight': canvas_height,
+            'timestamp': datetime.now().timestamp() * 1000
+        })
+        
+        # Debug info
+        logger.debug(f"Test node positioning: {[(n['id'], n['x'], n['y']) for n in self.test_nodes]}")
+        logger.debug(f"Canvas dimensions: {canvas_width}x{canvas_height}")
+        logger.debug(f"Click position: (400, 300)")
+        
+        # Process the message
+        response = message_queue._process_next_message(click_message)
+        
+        # Debug info
+        logger.debug(f"Click response: {response}")
+        logger.debug(f"Mock session state: {mock_st.session_state}")
+        
+        # Verify response and session state
+        self.assertIsNotNone(response)
+        self.assertEqual(response.status, 'completed')
+        self.assertEqual(mock_st.session_state.get('selected_node'), 1)  # Center node
+        self.assertTrue(mock_st.rerun_called)
+        
+    def test_canvas_dblclick_processing(self):
+        """Test processing of canvas double-click event."""
+        # Create a double-click message near the top right node
+        canvas_width = 800
+        canvas_height = 600
+        
+        # Double-click coordinates for top right node
+        dblclick_message = Message.create('frontend', 'canvas_dblclick', {
+            'x': 600,  # Near top right
+            'y': 150,  # Near top right
+            'canvasWidth': canvas_width,
+            'canvasHeight': canvas_height,
+            'timestamp': datetime.now().timestamp() * 1000
+        })
+        
+        # Debug info
+        logger.debug(f"Double-click position: (600, 150)")
+        
+        # Process the message
+        response = message_queue._process_next_message(dblclick_message)
+        
+        # Debug info
+        logger.debug(f"Double-click response: {response}")
+        logger.debug(f"Mock session state: {mock_st.session_state}")
+        
+        # Verify response and session state
+        self.assertIsNotNone(response)
+        self.assertEqual(response.status, 'completed')
+        self.assertEqual(mock_st.session_state.get('edit_node'), 2)  # Top right node
+        self.assertTrue(mock_st.rerun_called)
+        
+    def test_canvas_contextmenu_processing(self):
+        """Test processing of canvas context menu event."""
+        # Create a context menu message near the bottom left node
+        canvas_width = 800
+        canvas_height = 600
+        
+        # Context menu coordinates for bottom left node
+        contextmenu_message = Message.create('frontend', 'canvas_contextmenu', {
+            'x': 200,  # Near bottom left
+            'y': 450,  # Near bottom left
+            'canvasWidth': canvas_width,
+            'canvasHeight': canvas_height,
+            'timestamp': datetime.now().timestamp() * 1000
+        })
+        
+        # Debug info
+        logger.debug(f"Context menu position: (200, 450)")
+        
+        # Process the message
+        response = message_queue._process_next_message(contextmenu_message)
+        
+        # Debug info
+        logger.debug(f"Context menu response: {response}")
+        
+        # Verify response
+        self.assertIsNotNone(response)
+        self.assertEqual(response.status, 'completed')
+        
+        # Get the updated store content
+        ideas = get_ideas()
+        
+        # Verify node was deleted
+        node_ids = {n['id'] for n in ideas}
+        self.assertNotIn(3, node_ids)  # Bottom left node should be deleted
+        
+    def test_coordinate_transformation(self):
+        """Test coordinate transformation between canvas and backend coordinates."""
+        # Canvas dimensions
+        canvas_width = 800
+        canvas_height = 600
+        
+        # Test center node at (0,0) in backend should be (400,300) on canvas
+        node = self.test_nodes[0]  # Center node
+        node_canvas_x = node['x'] + canvas_width/2
+        node_canvas_y = node['y'] + canvas_height/2
+        
+        # Debug info
+        logger.debug(f"Node backend coordinates: ({node['x']}, {node['y']})")
+        logger.debug(f"Node canvas coordinates: ({node_canvas_x}, {node_canvas_y})")
+        
+        # Verify transformation
+        self.assertEqual(node_canvas_x, 400)  # Center X
+        self.assertEqual(node_canvas_y, 300)  # Center Y
+        
+    def test_click_distance_calculation(self):
+        """Test calculation of click distance to nodes."""
+        # Canvas dimensions
+        canvas_width = 800
+        canvas_height = 600
+        
+        # Click at (410, 310) - slightly offset from center
+        click_x = 410
+        click_y = 310
+        
+        # Calculate distances for each node
+        distances = []
+        for node in self.test_nodes:
+            # Convert backend coordinates to canvas coordinates
+            node_canvas_x = node['x'] + canvas_width/2
+            node_canvas_y = node['y'] + canvas_height/2
+            
+            # Calculate Euclidean distance
+            distance = ((node_canvas_x - click_x) ** 2 + (node_canvas_y - click_y) ** 2) ** 0.5
+            distances.append((node['id'], distance))
+        
+        # Debug info
+        logger.debug(f"Click position: ({click_x}, {click_y})")
+        logger.debug(f"Distance to each node: {distances}")
+        
+        # Find closest node
+        closest_node_id = sorted(distances, key=lambda x: x[1])[0][0]
+        
+        # Verify closest node is center node
+        self.assertEqual(closest_node_id, 1)  # Center node
+        
+    def test_node_threshold_detection(self):
+        """Test node detection within threshold."""
+        # Canvas dimensions
+        canvas_width = 800
+        canvas_height = 600
+        
+        # Calculate threshold (8% of smallest dimension)
+        threshold = min(canvas_width, canvas_height) * 0.08
+        
+        # Debug info
+        logger.debug(f"Click threshold: {threshold}")
+        
+        # Verify threshold is reasonable
+        self.assertGreater(threshold, 0)
+        self.assertLess(threshold, 100)  # Should be less than 100px
+        
+        # Test click just within threshold of center node
+        node = self.test_nodes[0]  # Center node
+        node_canvas_x = node['x'] + canvas_width/2
+        node_canvas_y = node['y'] + canvas_height/2
+        
+        # Click position just within threshold
+        click_x = node_canvas_x + threshold - 5
+        click_y = node_canvas_y
+        
+        # Calculate distance
+        distance = ((node_canvas_x - click_x) ** 2 + (node_canvas_y - click_y) ** 2) ** 0.5
+        
+        # Debug info
+        logger.debug(f"Node canvas position: ({node_canvas_x}, {node_canvas_y})")
+        logger.debug(f"Click position: ({click_x}, {click_y})")
+        logger.debug(f"Distance: {distance}, Threshold: {threshold}")
+        
+        # Verify distance is within threshold
+        self.assertLess(distance, threshold)
+        
+        # Test with click message
+        click_message = Message.create('frontend', 'canvas_click', {
             'x': click_x,
             'y': click_y,
             'canvasWidth': canvas_width,
             'canvasHeight': canvas_height,
             'timestamp': datetime.now().timestamp() * 1000
-        }
-    )
-    
-    response = handle_message(click_msg.to_dict())
-    assert response is not None
-    assert response.status == 'completed'
-    assert response.action.endswith('_response')
+        })
+        
+        # Process the message
+        response = message_queue._process_next_message(click_message)
+        
+        # Verify response
+        self.assertIsNotNone(response)
+        self.assertEqual(response.status, 'completed')
+        self.assertEqual(mock_st.session_state.get('selected_node'), 1)  # Center node
+        
+    def test_node_creation_and_positioning(self):
+        """Test node creation with position data."""
+        # Create a new node with specific position
+        message = Message.create('frontend', 'create_node', {
+            'label': 'New Positioned Node',
+            'description': 'Test node with position',
+            'urgency': 'medium',
+            'tag': 'test',
+            'x': 100,
+            'y': 100
+        })
+        
+        # Process the message
+        response = message_queue._process_next_message(message)
+        
+        # Verify response
+        self.assertIsNotNone(response)
+        self.assertEqual(response.status, 'completed')
+        
+        # Get the created node
+        new_node = next((n for n in get_ideas() if n['label'] == 'New Positioned Node'), None)
+        
+        # Verify node was created with correct position
+        self.assertIsNotNone(new_node)
+        self.assertEqual(new_node['x'], 100)
+        self.assertEqual(new_node['y'], 100)
+        
+    def test_message_queue_worker(self):
+        """Test message queue worker thread processing."""
+        # Create a test handler
+        called_messages = []
+        
+        def test_handler(message):
+            called_messages.append(message)
+            return create_response_message(message, 'completed', {'handled': True})
+        
+        # Start queue with test handler
+        message_queue.start(test_handler)
+        
+        try:
+            # Enqueue a test message
+            test_message = Message.create('test', 'test_action', {'test': 'data'})
+            message_queue.enqueue(test_message)
+            
+            # Wait for message to be processed
+            time.sleep(0.5)
+            
+            # Verify message was processed
+            self.assertGreaterEqual(len(called_messages), 1)
+            self.assertEqual(called_messages[0].action, 'test_action')
+            
+        finally:
+            # Stop queue
+            message_queue.stop()
 
-def test_node_selection():
-    """Test node selection through canvas clicks."""
-    # Create test nodes at positions that will be properly detected by click
-    # Position nodes at the center of the canvas for predictable click detection
-    nodes = [
-        {'id': 1, 'x': 0, 'y': 0, 'label': 'Center Node'},  # Will be at canvas center (400, 300)
-        {'id': 2, 'x': 50, 'y': 50, 'label': 'Top Right Node'},  # Will be at (450, 350)
-        {'id': 3, 'x': -50, 'y': -50, 'label': 'Bottom Left Node'}  # Will be at (350, 250)
-    ]
-    set_ideas(nodes)
-    
-    # Test clicking near center node (exact center)
-    center_click = create_test_message(
-        'canvas_click',
-        {
-            'x': 400,  # Center of canvas
-            'y': 300,  # Center of canvas
-            'canvasWidth': 800,
-            'canvasHeight': 600,
-            'timestamp': datetime.now().timestamp() * 1000
-        }
-    )
-    
-    response = handle_message(center_click.to_dict())
-    assert response is not None
-    assert response.status == 'completed'
-    assert response.action.endswith('_response')
-    
-    # Test clicking near top right node
-    top_right_click = create_test_message(
-        'canvas_click',
-        {
-            'x': 450,  # Near top right
-            'y': 350,  # Near top right
-            'canvasWidth': 800,
-            'canvasHeight': 600,
-            'timestamp': datetime.now().timestamp() * 1000
-        }
-    )
-    
-    response = handle_message(top_right_click.to_dict())
-    assert response is not None
-    assert response.status == 'completed'
-    assert response.action.endswith('_response')
-
-def test_node_interaction_events():
-    """Test various node interaction events."""
-    # Create test node
-    test_nodes = [
-        {
-            'id': 1,
-            'label': 'Test Node',
-            'x': 0,
-            'y': 0
-        }
-    ]
-    set_ideas(test_nodes)
-    
-    # Test double-click for editing
-    dblclick_msg = create_test_message(
-        'canvas_dblclick',
-        {
-            'x': 400,
-            'y': 300,
-            'canvasWidth': 800,
-            'canvasHeight': 600,
-            'timestamp': datetime.now().timestamp() * 1000
-        }
-    )
-    
-    response = handle_message(dblclick_msg.to_dict())
-    assert response is not None
-    assert response.status == 'completed'
-    assert response.action.endswith('_response')
-    
-    # Test right-click for deletion
-    context_msg = create_test_message(
-        'canvas_contextmenu',
-        {
-            'x': 400,
-            'y': 300,
-            'canvasWidth': 800,
-            'canvasHeight': 600,
-            'timestamp': datetime.now().timestamp() * 1000
-        }
-    )
-    
-    response = handle_message(context_msg.to_dict())
-    assert response is not None
-    assert response.status == 'completed'
-    assert response.action.endswith('_response')
-
-def test_canvas_boundary_conditions():
-    """Test canvas interactions at boundary conditions."""
-    # Create test node at center
-    test_nodes = [
-        {
-            'id': 1,
-            'label': 'Test Node',
-            'x': 0,
-            'y': 0
-        }
-    ]
-    set_ideas(test_nodes)
-    
-    # Test click at the exact center (where the node is)
-    center_click = create_test_message(
-        'canvas_click',
-        {
-            'x': 400,  # Center X
-            'y': 300,  # Center Y
-            'canvasWidth': 800,
-            'canvasHeight': 600,
-            'timestamp': datetime.now().timestamp() * 1000
-        }
-    )
-    
-    response = handle_message(center_click.to_dict())
-    assert response is not None
-    assert response.status == 'completed'
-    assert response.action.endswith('_response')
-    
-    # Test click outside canvas (should fail)
-    outside_click = create_test_message(
-        'canvas_click',
-        {
-            'x': 1000,  # Outside canvas
-            'y': 1000,  # Outside canvas
-            'canvasWidth': 800,
-            'canvasHeight': 600,
-            'timestamp': datetime.now().timestamp() * 1000
-        }
-    )
-    
-    response = handle_message(outside_click.to_dict())
-    assert response is not None
-    assert response.status == 'failed'  # This should fail as there's no node there
-    assert response.action.endswith('_response')
-
-def test_canvas_event_sequence():
-    """Test sequence of canvas events and their interactions."""
-    # Create test node
-    test_nodes = [
-        {
-            'id': 1,
-            'label': 'Test Node',
-            'x': 0,
-            'y': 0
-        }
-    ]
-    set_ideas(test_nodes)
-    
-    # Create a sequence of events
-    events = [
-        create_test_message(
-            'canvas_click',
-            {
-                'x': 400,
-                'y': 300,
-                'canvasWidth': 800,
-                'canvasHeight': 600,
-                'timestamp': datetime.now().timestamp() * 1000
-            }
-        ),
-        create_test_message(
-            'canvas_dblclick',
-            {
-                'x': 400,
-                'y': 300,
-                'canvasWidth': 800,
-                'canvasHeight': 600,
-                'timestamp': datetime.now().timestamp() * 1000
-            }
-        ),
-        create_test_message(
-            'canvas_contextmenu',
-            {
-                'x': 400,
-                'y': 300,
-                'canvasWidth': 800,
-                'canvasHeight': 600,
-                'timestamp': datetime.now().timestamp() * 1000
-            }
-        )
-    ]
-    
-    # Process events in sequence
-    responses = []
-    for event in events:
-        response = handle_message(event.to_dict())
-        responses.append(response)
-    
-    # Verify responses
-    assert len(responses) == 3
-    for response in responses:
-        assert response is not None
-        assert response.status == 'completed'
-        assert response.action.endswith('_response')
 
 if __name__ == '__main__':
     unittest.main() 
