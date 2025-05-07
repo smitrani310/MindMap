@@ -190,3 +190,42 @@
 2025-05-07 15:12:43,505 - src.message_queue - INFO - Message queue worker thread stopped
 2025-05-07 15:12:43,606 - src.message_queue - INFO - Message queue worker thread started
 2025-05-07 15:12:43,707 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:31,011 - tests.integration.test_canvas_events - INFO - Running canvas click test
+2025-05-07 15:17:31,021 - src.message_queue - INFO - Created new node 4 at position (200.0, -150.0)
+2025-05-07 15:17:31,026 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:31,529 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:31,531 - src.message_queue - INFO - Created new node with ID 4
+2025-05-07 15:17:31,534 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:31,740 - src.message_queue - INFO - Created new node with ID 2
+2025-05-07 15:17:32,144 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:32,245 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:32,346 - src.message_queue - WARNING - Node with id 1 not found
+2025-05-07 15:17:32,850 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:32,951 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:33,558 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:33,659 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:33,961 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:34,063 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:35,676 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:35,777 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:36,084 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:36,186 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:37,293 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:37,394 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:37,696 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:37,798 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:38,200 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:38,302 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:38,704 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:38,805 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:39,207 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:39,308 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:39,611 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:39,713 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:39,814 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:39,915 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:40,320 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:40,421 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:40,724 - src.message_queue - INFO - Message queue worker thread stopped
+2025-05-07 15:17:40,825 - src.message_queue - INFO - Message queue worker thread started
+2025-05-07 15:17:41,027 - src.message_queue - INFO - Message queue worker thread stopped

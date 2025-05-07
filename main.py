@@ -583,6 +583,12 @@ try:
                     # Set central node safely
                     set_central(next((i.get('id') for i in validated_data if i.get('is_central') and i.get('id') is not None), None))
                     save_data(get_store())
+                    
+                    # Restart the message queue to ensure it works with the new data
+                    message_queue.stop()
+                    time.sleep(0.2)  # Allow time for the thread to fully stop
+                    message_queue.start(handle_message_with_queue)
+                    
                     logger.info(f"Successfully imported {len(validated_data)} nodes from {uploaded.name}")
                     st.success("Imported bubbles from JSON")
             except Exception as e:

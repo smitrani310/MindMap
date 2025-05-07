@@ -107,10 +107,13 @@ class MessageQueue:
         
     def start(self, callback: Callable[[Message], Message]):
         """Start the message queue worker thread."""
+        # If already running, stop it first
         if self._worker_thread is not None:
-            logger.warning("Message queue worker thread already running")
-            return
-            
+            logger.info("Restarting message queue worker thread")
+            self.stop()
+            time.sleep(0.2)  # Allow time for resources to be released
+        
+        # Set up the new worker thread
         self._callback = callback
         self._stop_event.clear()
         self._worker_thread = threading.Thread(target=self._worker_loop)
@@ -124,8 +127,23 @@ class MessageQueue:
             return
             
         self._stop_event.set()
-        self._worker_thread.join()
+        
+        # Set a timeout for joining the thread
+        try:
+            self._worker_thread.join(timeout=2.0)
+        except Exception as e:
+            logger.warning(f"Error joining message queue thread: {str(e)}")
+            
+        # Even if join fails, continue with cleanup
         self._worker_thread = None
+        
+        # Clear the queue and reset state
+        with self._lock:
+            self.queue.clear()
+            
+        # Clear the callback reference
+        self._callback = None
+        
         logger.info("Message queue worker thread stopped")
         
     def enqueue(self, message: Message) -> None:
@@ -143,6 +161,12 @@ class MessageQueue:
                     if self.queue:
                         message = self.queue.pop(0)
                         logger.debug(f"Processing message from source: {message.source}, action: {message.action}")
+                    else:
+                        message = None
+                
+                # Process the message outside the lock to allow other threads to enqueue messages
+                if message:
+                    try:
                         # Process the message with the correct method call
                         response = self._process_next_message(message)
                         
@@ -153,8 +177,17 @@ class MessageQueue:
                             logger.debug("Callback completed")
                         else:
                             logger.warning(f"No callback or response for message: {message.source}, {message.action}")
+                    except Exception as e:
+                        logger.error(f"Error processing message {message.action}: {str(e)}")
+                        # Create an error response for the callback
+                        if self._callback:
+                            error_response = create_response_message(message, 'failed', str(e))
+                            try:
+                                self._callback(error_response)
+                            except Exception as cb_error:
+                                logger.error(f"Error in callback for error response: {str(cb_error)}")
             except Exception as e:
-                logger.error(f"Error in message queue worker: {str(e)}")
+                logger.error(f"Critical error in message queue worker: {str(e)}")
             time.sleep(0.1)  # Prevent busy waiting
             
     def _process_next_message(self, message: Message) -> Optional[Message]:
@@ -414,7 +447,7 @@ class MessageQueue:
             # Create a new node
             new_node = {
                 'id': node_id,
-                'label': f"Node {node_id}",
+                'label': 'New Node',
                 'x': node_x,
                 'y': node_y,
                 'description': '',
@@ -554,7 +587,7 @@ class MessageQueue:
             # Create the new node with required fields
             new_node = {
                 'id': node_id,
-                'label': message.payload.get('label', f"Node {node_id}"),
+                'label': message.payload.get('label', 'New Node'),
                 'x': message.payload.get('x', 0),
                 'y': message.payload.get('y', 0),
                 'parent': message.payload.get('parent'),
