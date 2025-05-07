@@ -586,6 +586,7 @@ try:
                     
                     # Set a flag to reinitialize the message queue after import
                     st.session_state['reinitialize_message_queue'] = True
+                    logger.info(f"Setting reinitialize_message_queue flag after import of {len(validated_data)} nodes")
                     
                     logger.info(f"Successfully imported {len(validated_data)} nodes from {uploaded.name}")
                     st.success("Imported bubbles from JSON")
@@ -603,13 +604,21 @@ try:
             # Create filename with timestamp
             export_filename = f"mindmap_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
             
-            st.download_button(
-                "💾 Export JSON",
-                data=json.dumps(export, indent=2),
-                file_name=export_filename,
-                mime="application/json",
-                on_click=lambda: logger.info(f"Exported {len(export)} nodes to {export_filename}")
-            )
+            try:
+                # Create JSON data
+                json_data = json.dumps(export, indent=2)
+                
+                st.download_button(
+                    "💾 Export JSON",
+                    data=json_data,
+                    file_name=export_filename,
+                    mime="application/json",
+                    key="export_json_button",
+                    on_click=lambda: logger.info(f"Exported {len(export)} nodes to {export_filename}")
+                )
+            except Exception as e:
+                logger.error(f"Error preparing JSON export: {str(e)}")
+                st.error(f"Error exporting JSON: {str(e)}")
 
     # Add Bubble Form
     with st.sidebar.form("add_bubble_form"):
@@ -702,18 +711,26 @@ try:
             
             # Option to view the current log
             if st.button("View Current Log"):
-                with open(os.path.join(logs_dir, current_log), 'r') as f:
-                    log_content = f.read()
-                st.text_area("Log Content", log_content, height=300)
+                try:
+                    with open(os.path.join(logs_dir, current_log), 'r') as f:
+                        log_content = f.read()
+                    st.text_area("Log Content", log_content, height=300)
+                except Exception as e:
+                    st.error(f"Error reading log file: {str(e)}")
             
             # Download current log
-            with open(os.path.join(logs_dir, current_log), 'r') as f:
-                st.download_button(
-                    "💾 Download Current Log",
-                    f.read(),
-                    file_name=current_log,
-                    mime="text/plain"
-                )
+            try:
+                with open(os.path.join(logs_dir, current_log), 'r') as f:
+                    log_content = f.read()
+                    st.download_button(
+                        "💾 Download Current Log",
+                        log_content,
+                        file_name=current_log,
+                        mime="text/plain",
+                        key="download_current_log"
+                    )
+            except Exception as e:
+                st.error(f"Error preparing log for download: {str(e)}")
             
             # Previous logs dropdown
             if len(log_files) > 1:
@@ -727,18 +744,26 @@ try:
                 if selected_log:
                     # View selected log
                     if st.button("View Selected Log"):
-                        with open(os.path.join(logs_dir, selected_log), 'r') as f:
-                            log_content = f.read()
-                        st.text_area("Previous Log Content", log_content, height=300)
+                        try:
+                            with open(os.path.join(logs_dir, selected_log), 'r') as f:
+                                log_content = f.read()
+                            st.text_area("Previous Log Content", log_content, height=300)
+                        except Exception as e:
+                            st.error(f"Error reading selected log: {str(e)}")
                     
                     # Download selected log
-                    with open(os.path.join(logs_dir, selected_log), 'r') as f:
-                        st.download_button(
-                            "💾 Download Selected Log",
-                            f.read(),
-                            file_name=selected_log,
-                            mime="text/plain"
-                        )
+                    try:
+                        with open(os.path.join(logs_dir, selected_log), 'r') as f:
+                            log_content = f.read()
+                            st.download_button(
+                                "💾 Download Selected Log",
+                                log_content,
+                                file_name=selected_log,
+                                mime="text/plain",
+                                key="download_selected_log"
+                            )
+                    except Exception as e:
+                        st.error(f"Error preparing selected log for download: {str(e)}")
         else:
             st.info("No log files found.")
 
@@ -1772,7 +1797,7 @@ try:
                 console.log('Created Streamlit namespace mock to prevent errors');
             }}
             </script>
-            <script type="text/javascript" defer>
+            <script type="text/javascript">
             {utils_js}
             </script>
             """, 
@@ -1830,8 +1855,14 @@ if st.session_state.get('reinitialize_message_queue', False):
     del st.session_state['reinitialize_message_queue']
     
     # Stop and restart the message queue to ensure it works with new data
+    logger.info("Reinitializing message queue after JSON import")
     message_queue.stop()
-    time.sleep(0.2)  # Allow time for the thread to fully stop
+    time.sleep(0.3)  # Allow time for the thread to fully stop
+    
+    # Verify the queue is stopped
+    logger.info(f"Message queue stopped: thread is {message_queue._worker_thread}")
+    
+    # Restart the queue
     message_queue.start(handle_message_with_queue)
     logger.info("Message queue reinitialized after import")
 
