@@ -1139,6 +1139,37 @@ try:
     // Add form to document
     document.body.appendChild(hiddenForm);
 
+    // Attach drag end event handler to the vis.js network
+    document.addEventListener('DOMContentLoaded', function() {
+        // Wait a short time for vis.js to initialize
+        setTimeout(function() {
+            if (window.visNetwork) {
+                console.log('Adding dragEnd event listener to visNetwork');
+                
+                // Add the dragEnd event to track node position changes
+                window.visNetwork.on('dragEnd', function(params) {
+                    if (params.nodes && params.nodes.length > 0) {
+                        const nodeId = params.nodes[0];
+                        const nodePosition = window.visNetwork.getPositions([nodeId])[nodeId];
+                        
+                        console.log('Node dragged:', nodeId, 'to position:', nodePosition);
+                        
+                        // Send position update to backend
+                        simpleSendMessage('pos', {
+                            id: nodeId,
+                            x: nodePosition.x,
+                            y: nodePosition.y
+                        });
+                    }
+                });
+                
+                console.log('dragEnd event handler attached successfully');
+            } else {
+                console.error('visNetwork not available when trying to attach dragEnd handler');
+            }
+        }, 1000); // Give network time to initialize
+    });
+
     // Create global helper for direct parent-frame communication using pure postMessage
     window.directParentCommunication = {
         sendMessage: function(action, payload) {
@@ -1163,7 +1194,7 @@ try:
             }
         }
     };
-    
+
     // Communication helper for sending messages to Streamlit
     function simpleSendMessage(action, payload) {
         try {
@@ -1543,6 +1574,29 @@ try:
                     
                     # Force a rerun to update the UI after processing
                     st.rerun()
+                    
+                elif action == 'pos':
+                    # Handle node position update
+                    logger.info(f"Processing position update: {payload}")
+                    
+                    if 'id' in payload and 'x' in payload and 'y' in payload:
+                        node_id = payload['id']
+                        x = payload['x']
+                        y = payload['y']
+                        
+                        # Create a message object for the queue
+                        position_message = Message.create('frontend', 'pos', {
+                            'id': node_id,
+                            'x': x,
+                            'y': y
+                        })
+                        
+                        # Process the message
+                        handle_message_with_queue(position_message)
+                        
+                        logger.info(f"Updated position of node {node_id} to ({x}, {y})")
+                    else:
+                        logger.error(f"Invalid position update payload: {payload}")
                 else:
                     # Handle other action types
                     logger.info(f"Processing regular action: {action}")

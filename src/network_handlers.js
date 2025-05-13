@@ -165,7 +165,9 @@ function handleIncomingMessage(event) {
 // Send node position updates
 export function sendNodePosition(nodeId, position) {
     const message = messageUtils.createMessage('pos', {
-        [nodeId]: position
+        id: nodeId,
+        x: position.x,
+        y: position.y
     });
     messageUtils.sendMessage(message);
 }
