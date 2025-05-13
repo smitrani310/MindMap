@@ -24,6 +24,93 @@ function sendLog(level, message, data = null) {
     }
 }
 
+// Position update specific function to ensure correct format
+function sendNodePositionUpdate(nodeId, x, y) {
+    try {
+        // Convert coordinates to numbers to ensure proper format
+        const xCoord = parseFloat(x);
+        const yCoord = parseFloat(y);
+        
+        // Verify values are valid numbers
+        if (isNaN(xCoord) || isNaN(yCoord)) {
+            sendLog('error', `Invalid position values: x=${x}, y=${y}`);
+            return false;
+        }
+        
+        // Create standardized position message
+        const positionMessage = {
+            id: nodeId,
+            x: xCoord,
+            y: yCoord
+        };
+        
+        // Log the position update attempt
+        sendLog('info', `Sending position update for node ${nodeId}: (${xCoord}, ${yCoord})`, positionMessage);
+        
+        // Try multiple methods to send the position update
+        let methodSuccess = false;
+        
+        // Method 1: Send using message utilities
+        try {
+            const message = messageUtils.createMessage('frontend', 'pos', positionMessage);
+            const result = messageUtils.sendMessage(message);
+            if (result) {
+                methodSuccess = true;
+                sendLog('info', `Position update sent via messageUtils for node ${nodeId}`);
+            }
+        } catch (err) {
+            sendLog('error', `Failed to send position via messageUtils: ${err.message}`);
+        }
+        
+        // Method 2: Direct parent communication
+        if (window.directParentCommunication) {
+            try {
+                const result = window.directParentCommunication.sendMessage('pos', positionMessage);
+                if (result) {
+                    methodSuccess = true;
+                    sendLog('info', `Position update sent via directParentCommunication for node ${nodeId}`);
+                }
+            } catch (err) {
+                sendLog('error', `Failed to send position via directParentCommunication: ${err.message}`);
+            }
+        }
+        
+        // Method 3: URL parameters (as a fallback)
+        if (!methodSuccess) {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                params.set('action', 'pos');
+                params.set('payload', JSON.stringify(positionMessage));
+                
+                // Try to update URL without page reload
+                window.history.pushState({}, '', window.location.pathname + '?' + params.toString());
+                
+                // Force a reload after a brief delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 100);
+                
+                methodSuccess = true;
+                sendLog('info', `Position update sent via URL parameters for node ${nodeId} (page will reload)`);
+            } catch (err) {
+                sendLog('error', `Failed to send position via URL parameters: ${err.message}`);
+            }
+        }
+        
+        // Report overall success
+        if (methodSuccess) {
+            sendLog('info', `Successfully sent position update for node ${nodeId}: (${xCoord}, ${yCoord})`);
+        } else {
+            sendLog('error', `All position update methods failed for node ${nodeId}`);
+        }
+        
+        return methodSuccess;
+    } catch (error) {
+        sendLog('error', `Failed to send position update: ${error.message}`);
+        return false;
+    }
+}
+
 // Initialize network handlers
 export function initializeNetworkHandlers() {
     // Remove any existing event listeners first
@@ -100,9 +187,102 @@ export function initializeNetworkHandlers() {
             return false;
         });
         
+        // Attach dragEnd handler to network if available
+        if (window.visNetwork) {
+            attachDragEndHandler(window.visNetwork);
+        }
+        
         sendLog('info', 'Canvas event handlers initialized');
     } else {
         sendLog('error', 'Network div not found');
+    }
+}
+
+// Specifically attach dragEnd handler to ensure it's connected
+function attachDragEndHandler(network) {
+    if (!network) {
+        sendLog('error', 'Cannot attach dragEnd handler: network is null');
+        return false;
+    }
+    
+    try {
+        // Remove any existing dragEnd handler first
+        try {
+            network.off('dragEnd'); 
+        } catch (e) {
+            // Ignore errors when no handler exists
+            sendLog('debug', 'No existing dragEnd handler to remove');
+        }
+        
+        // Add new handler
+        network.on('dragEnd', function(params) {
+            sendLog('info', '🔍 DRAG END EVENT TRIGGERED', params);
+            
+            if (!params || !params.nodes || params.nodes.length === 0) {
+                sendLog('warning', 'Drag end event with no nodes!');
+                return;
+            }
+            
+            const nodeId = params.nodes[0];
+            const positions = network.getPositions([nodeId]);
+            
+            if (!positions || !positions[nodeId]) {
+                sendLog('error', `Failed to get position for node ${nodeId}`);
+                return;
+            }
+            
+            const position = positions[nodeId];
+            sendLog('info', `🎯 Node ${nodeId} dragged to position:`, position);
+            
+            // Log more position details
+            console.log(`POSITION DEBUG - Node: ${nodeId}, New position: (${position.x}, ${position.y})`);
+            sendLog('debug', `Position type check - x: ${typeof position.x}, y: ${typeof position.y}`);
+            
+            // Verify that position contains valid numbers
+            if (isNaN(position.x) || isNaN(position.y)) {
+                sendLog('error', `Invalid position values for node ${nodeId}: x=${position.x}, y=${position.y}`);
+                return;
+            }
+            
+            // Send position update via multiple methods to ensure delivery
+            // Method 1: Use the dedicated function
+            const primaryMethod = sendNodePositionUpdate(nodeId, position.x, position.y);
+            sendLog('debug', `Primary position update method result: ${primaryMethod}`);
+            
+            // Method 2: Direct URL update as backup
+            try {
+                const params = new URLSearchParams(window.location.search);
+                params.set('action', 'pos');
+                const payload = {
+                    id: nodeId,
+                    x: position.x,
+                    y: position.y
+                };
+                params.set('payload', JSON.stringify(payload));
+                
+                // Update URL without navigation (history state only)
+                window.history.pushState({}, '', window.location.pathname + '?' + params.toString());
+                sendLog('debug', 'Updated URL with position parameters');
+            } catch (e) {
+                sendLog('error', `Failed to update URL with position: ${e.message}`);
+            }
+            
+            // Method 3: Use directParentCommunication if available
+            if (window.directParentCommunication) {
+                window.directParentCommunication.sendMessage('pos', {
+                    id: nodeId,
+                    x: position.x,
+                    y: position.y
+                });
+                sendLog('debug', 'Sent position update via directParentCommunication');
+            }
+        });
+        
+        sendLog('info', 'dragEnd handler attached successfully');
+        return true;
+    } catch (error) {
+        sendLog('error', `Failed to attach dragEnd handler: ${error.message}`);
+        return false;
     }
 }
 
@@ -164,12 +344,8 @@ function handleIncomingMessage(event) {
 
 // Send node position updates
 export function sendNodePosition(nodeId, position) {
-    const message = messageUtils.createMessage('pos', {
-        id: nodeId,
-        x: position.x,
-        y: position.y
-    });
-    messageUtils.sendMessage(message);
+    // Use the dedicated position function to ensure correct format
+    return sendNodePositionUpdate(nodeId, position.x, position.y);
 }
 
 // Send node selection
@@ -244,6 +420,15 @@ export function cleanupNetworkHandlers() {
         networkDiv.removeEventListener('dblclick', null);
         networkDiv.removeEventListener('contextmenu', null);
     }
+    
+    // Remove dragEnd handler if network exists
+    if (window.visNetwork) {
+        try {
+            window.visNetwork.off('dragEnd');
+        } catch (e) {
+            // Ignore errors
+        }
+    }
 }
 
 // Wait for the network to be available
@@ -268,6 +453,8 @@ function waitForNetwork() {
             }
             clearInterval(checkInterval);
             initializeNetworkHandlers();
+            // Explicitly attach dragEnd handler
+            attachDragEndHandler(window.visNetwork);
             return;
         }
         
@@ -285,8 +472,11 @@ function waitForNetwork() {
                         if (window.debugToCanvas) {
                             window.debugToCanvas(`SUCCESS: Network found in canvas on attempt ${attempts}`);
                         }
+                        window.visNetwork = canvasElements[i].network;
                         clearInterval(checkInterval);
                         initializeNetworkHandlers();
+                        // Explicitly attach dragEnd handler
+                        attachDragEndHandler(window.visNetwork);
                         return;
                     }
                 }
@@ -308,7 +498,10 @@ function waitForNetwork() {
                             obj.canvas && 
                             typeof obj.on === 'function') {
                             window.debugToCanvas(`FOUND NETWORK-LIKE OBJECT AT window.${key}, using it`);
+                            window.visNetwork = obj;
                             initializeNetworkHandlers();
+                            // Explicitly attach dragEnd handler
+                            attachDragEndHandler(window.visNetwork);
                             return;
                         }
                     } catch (e) {
@@ -335,6 +528,8 @@ function forceNetworkAccess() {
             window.debugToCanvas("SUCCESS: Network found at window.visNetwork");
         }
         initializeNetworkHandlers();
+        // Explicitly attach dragEnd handler
+        attachDragEndHandler(window.visNetwork);
         return true;
     }
     
@@ -354,6 +549,8 @@ function forceNetworkAccess() {
                 }
                 window.visNetwork = networkInstance;
                 initializeNetworkHandlers();
+                // Explicitly attach dragEnd handler
+                attachDragEndHandler(window.visNetwork);
                 return true;
             }
         }
@@ -375,6 +572,13 @@ document.addEventListener('DOMContentLoaded', function() {
         // Fallback to polling approach
         setTimeout(waitForNetwork, 100);
     }
+    
+    // Set up a recurring check to ensure dragEnd handler stays attached
+    setInterval(function() {
+        if (window.visNetwork) {
+            attachDragEndHandler(window.visNetwork);
+        }
+    }, 5000); // Check every 5 seconds
 });
 
 // Add this at the end to guarantee it runs even if DOMContentLoaded already fired
@@ -386,5 +590,77 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 } else {
     if (window.debugToCanvas) {
         window.debugToCanvas("Waiting for document to load...");
+    }
+}
+
+// Function to apply stored positions to nodes in the network
+function applyStoredPositions(network, positions) {
+    if (!network || !positions) {
+        sendLog('warning', 'Cannot apply positions: network or positions object missing');
+        return false;
+    }
+    
+    try {
+        // Count applied positions for logging
+        let appliedCount = 0;
+        let skippedCount = 0;
+        
+        // Get all node IDs
+        const nodeIds = network.body.data.nodes.getIds();
+        sendLog('info', `Applying positions to ${nodeIds.length} nodes`);
+        
+        // Apply positions to each node
+        nodeIds.forEach(nodeId => {
+            if (positions[nodeId]) {
+                // Apply position if valid
+                const x = parseFloat(positions[nodeId].x);
+                const y = parseFloat(positions[nodeId].y);
+                
+                if (!isNaN(x) && !isNaN(y)) {
+                    // Create a proper position object
+                    const posObj = { x: x, y: y };
+                    
+                    // Apply position to the node and ensure it remains fixed
+                    try {
+                        // Get current network positions for comparison
+                        const currentPos = network.getPositions([nodeId])[nodeId];
+                        if (currentPos && 
+                            (Math.abs(currentPos.x - x) < 0.001 && Math.abs(currentPos.y - y) < 0.001)) {
+                            // Position is already correct, skip
+                            skippedCount++;
+                            return;
+                        }
+                        
+                        // Set the node position
+                        network.moveNode(nodeId, x, y);
+                        
+                        // Also ensure it's stored in the data structure
+                        const nodeData = network.body.data.nodes.get(nodeId);
+                        if (nodeData) {
+                            nodeData.x = x;
+                            nodeData.y = y;
+                            network.body.data.nodes.update(nodeData);
+                        }
+                        
+                        // Log the position application
+                        sendLog('info', `Applied position (${x}, ${y}) to node ${nodeId}`);
+                        appliedCount++;
+                    } catch (e) {
+                        sendLog('error', `Failed to apply position to node ${nodeId}: ${e.message}`);
+                    }
+                } else {
+                    sendLog('warning', `Invalid position values for node ${nodeId}: (${positions[nodeId].x}, ${positions[nodeId].y})`);
+                    skippedCount++;
+                }
+            } else {
+                skippedCount++;
+            }
+        });
+        
+        sendLog('info', `Position application complete: ${appliedCount} applied, ${skippedCount} skipped`);
+        return true;
+    } catch (error) {
+        sendLog('error', `Error applying positions: ${error.message}`);
+        return false;
     }
 } 

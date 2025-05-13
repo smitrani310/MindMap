@@ -83,25 +83,37 @@ def update_idea(node_id, updates):
     save_data(store)  # Save state changes automatically
 
 def save_data(data):
-    """Save data to JSON file, with caching to prevent redundant writes."""
-    global _last_save_hash
-    
+    """Save app data to file."""
     try:
-        # Save to session state
-        st.session_state['store'] = data
+        # Log what we're about to save
+        ideas = data.get('ideas', [])
+        logger.debug(f"Saving data with {len(ideas)} nodes")
         
-        # Calculate hash of the current data
-        data_str = json.dumps(data, sort_keys=True)
-        current_hash = hashlib.md5(data_str.encode()).hexdigest()
+        # Validate positions for all nodes before saving
+        for node in ideas:
+            # Check if node has position data
+            if 'x' not in node or 'y' not in node or node['x'] is None or node['y'] is None:
+                logger.warning(f"Node {node.get('id', 'unknown')} missing position data, initializing to (0,0)")
+                node['x'] = 0.0
+                node['y'] = 0.0
+            
+            # Ensure positions are float (not strings or other types)
+            try:
+                node['x'] = float(node['x'])
+                node['y'] = float(node['y'])
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid position values for node {node.get('id', 'unknown')}, resetting to (0,0)")
+                node['x'] = 0.0
+                node['y'] = 0.0
         
-        # Only write to file if data has changed
-        if current_hash != _last_save_hash:
-            logger.debug(f"Data changed, saving to {DATA_FILE}")
-            with open(DATA_FILE, 'w') as f:
-                json.dump(data, f, indent=2)
-            _last_save_hash = current_hash
-            logger.debug("Save complete")
+        # Log position data for debugging
+        position_data = {node.get('id'): (node.get('x'), node.get('y')) for node in ideas if 'id' in node}
+        logger.debug(f"Node positions before saving: {position_data}")
         
+        # Serialize the data to JSON
+        with open(DATA_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+        logger.debug("Save complete")
         return True
     except Exception as e:
         logger.error(f"Error saving data: {str(e)}")

@@ -9,6 +9,7 @@ import uuid
 import datetime
 from typing import Dict, Any, Optional, Union
 from dataclasses import dataclass, asdict
+import time
 
 @dataclass
 class Message:
@@ -31,6 +32,33 @@ class Message:
             message_id=str(uuid.uuid4()),
             timestamp=datetime.datetime.now().timestamp() * 1000
         )
+
+    @staticmethod
+    def create_error(original_message: 'Message', error_message: str) -> 'Message':
+        """Create an error response to a message."""
+        response = Message(
+            source="system",
+            action=f"response_{original_message.action}",
+            payload=original_message.payload,
+            message_id=str(uuid.uuid4()),
+            timestamp=datetime.datetime.now().timestamp() * 1000,
+            status="failed",
+            error=error_message
+        )
+        return response
+
+    @staticmethod
+    def create_success(original_message: 'Message', payload: Dict = None) -> 'Message':
+        """Create a success response to a message."""
+        response = Message(
+            source="system",
+            action=f"response_{original_message.action}",
+            payload=payload or original_message.payload,
+            message_id=str(uuid.uuid4()),
+            timestamp=datetime.datetime.now().timestamp() * 1000,
+            status="completed"
+        )
+        return response
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert message to dictionary format."""

@@ -1,4 +1,8 @@
 """Utilities for node validation and manipulation."""
+import logging
+import math
+
+logger = logging.getLogger(__name__)
 
 def validate_node(node, get_next_id_func, increment_next_id_func):
     """Validate and fix node structure to ensure all required fields are present.
@@ -22,8 +26,8 @@ def validate_node(node, get_next_id_func, increment_next_id_func):
             'urgency': 'medium',
             'tag': '',
             'edge_type': 'default',
-            'x': 0,
-            'y': 0
+            'x': 0.0,
+            'y': 0.0
         }
     
     # Check and add required fields if missing
@@ -38,14 +42,32 @@ def validate_node(node, get_next_id_func, increment_next_id_func):
     node.setdefault('tag', '')
     node.setdefault('edge_type', 'default')
     
-    # Ensure x and y are numbers, not None
-    node.setdefault('x', 0)
-    node.setdefault('y', 0)
+    # Log existing position values for debugging
+    if 'x' in node or 'y' in node:
+        logger.debug(f"Node {node.get('id')} existing position: x={node.get('x')}, y={node.get('y')}")
     
-    if node['x'] is None:
-        node['x'] = 0
-    if node['y'] is None:
-        node['y'] = 0
+    # Ensure x and y are numbers, not None or strings
+    # If values exist but are invalid, preserve them by converting to float
+    if 'x' not in node or node['x'] is None:
+        node['x'] = 0.0
+    else:
+        try:
+            node['x'] = float(node['x'])
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid x value for node {node.get('id')}: {node['x']}, defaulting to 0.0")
+            node['x'] = 0.0
+    
+    if 'y' not in node or node['y'] is None:
+        node['y'] = 0.0
+    else:
+        try:
+            node['y'] = float(node['y'])
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid y value for node {node.get('id')}: {node['y']}, defaulting to 0.0")
+            node['y'] = 0.0
+    
+    # Log the updated position values
+    logger.debug(f"Node {node.get('id')} validated position: x={node['x']}, y={node['y']}")
     
     # Ensure the id is an integer
     if not isinstance(node['id'], int):
@@ -63,5 +85,53 @@ def validate_node(node, get_next_id_func, increment_next_id_func):
         except (ValueError, TypeError):
             # If parent can't be converted to int, set to None
             node['parent'] = None
+    
+    return node
+
+def update_node_position(node, x, y):
+    """Update a node's position with proper type handling.
+    
+    Args:
+        node: Node dictionary to update
+        x: New x coordinate
+        y: New y coordinate
+        
+    Returns:
+        Updated node dictionary
+    """
+    if not isinstance(node, dict):
+        logger.error("Cannot update position for invalid node")
+        return node
+    
+    try:
+        # Store original values for logging
+        orig_x = node.get('x')
+        orig_y = node.get('y')
+        
+        # Log the input values
+        logger.info(f"🔍 Position update received - Node: {node.get('id', 'unknown')}, New pos: ({x}, {y}), Types: x={type(x).__name__}, y={type(y).__name__}")
+        
+        # Convert to float and update
+        node['x'] = float(x)
+        node['y'] = float(y)
+        
+        # Log with more detail
+        logger.info(f"📝 Position updated for node {node.get('id', 'unknown')}: ({orig_x}, {orig_y}) -> ({node['x']}, {node['y']})")
+        
+        # Check for NaN values (important validation)
+        if math.isnan(node['x']) or math.isnan(node['y']):
+            logger.warning(f"NaN coordinates detected for node {node.get('id', 'unknown')}, resetting to origin")
+            node['x'] = 0.0
+            node['y'] = 0.0
+            
+        # Also check for zero coordinates - might indicate an issue
+        if node['x'] == 0.0 and node['y'] == 0.0:
+            logger.warning(f"⚠️ Zero coordinates (0, 0) detected after update for node {node.get('id', 'unknown')}. This might indicate a position is not being saved correctly.")
+            
+    except (ValueError, TypeError) as e:
+        logger.error(f"Error updating position for node {node.get('id', 'unknown')}: {str(e)}")
+        # Set default values if conversion fails
+        node['x'] = 0.0
+        node['y'] = 0.0
     
     return node 

@@ -823,12 +823,41 @@ class MessageQueue:
     def _handle_position(self, message: Message) -> Message:
         """Handle node position updates."""
         try:
+            # Log the incoming payload for debugging
+            logger.debug(f"Position update payload: {message.payload}")
+            
+            # Check for the direct format first
             node_id = message.payload.get('id')
             new_x = message.payload.get('x')
             new_y = message.payload.get('y')
             
+            # If direct format isn't available, try the alternative format
             if node_id is None or new_x is None or new_y is None:
+                # Try to get from the alternative format
+                if len(message.payload) > 0:
+                    # Get the first key that could be a node ID
+                    potential_keys = [k for k in message.payload.keys() 
+                                    if k not in ('id', 'x', 'y', 'source', 'action', 'timestamp')]
+                    if potential_keys:
+                        first_key = potential_keys[0]
+                        try:
+                            # Try to convert to node ID
+                            node_id = int(first_key)
+                            pos_data = message.payload.get(first_key)
+                            if isinstance(pos_data, dict) and 'x' in pos_data and 'y' in pos_data:
+                                new_x = pos_data['x']
+                                new_y = pos_data['y']
+                                logger.debug(f"Using alternative position format with key {first_key}")
+                        except (ValueError, TypeError):
+                            logger.warning(f"Could not convert key {first_key} to node ID")
+            
+            # Final check if we have all required data
+            if node_id is None or new_x is None or new_y is None:
+                logger.error(f"Missing position data: id={node_id}, x={new_x}, y={new_y}")
                 return create_response_message(message, 'failed', "Missing required position data")
+            
+            # Log the position update
+            logger.info(f"Updating position for node {node_id} to ({new_x}, {new_y})")
             
             # Find and update the node position
             ideas = get_ideas()
@@ -836,6 +865,10 @@ class MessageQueue:
             
             for node in ideas:
                 if 'id' in node and node['id'] == node_id:
+                    # Log the position change
+                    old_x, old_y = node.get('x'), node.get('y')
+                    logger.info(f"Node {node_id} position changing from ({old_x}, {old_y}) to ({new_x}, {new_y})")
+                    
                     node['x'] = new_x
                     node['y'] = new_y
                     node_updated = True
@@ -843,6 +876,7 @@ class MessageQueue:
             
             # If no node was found with the given ID
             if not node_updated:
+                logger.warning(f"Node with id {node_id} not found for position update")
                 return create_response_message(message, 'failed', f"Node with id {node_id} not found")
             
             # Update the store
@@ -851,6 +885,7 @@ class MessageQueue:
             # Save the updated state
             save_data(get_store())
             
+            logger.info(f"Position update successful for node {node_id}")
             return create_response_message(message, 'completed')
         except Exception as e:
             logger.error(f"Error updating node position: {str(e)}")

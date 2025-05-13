@@ -2,6 +2,7 @@ import sys
 from unittest.mock import MagicMock
 import pytest
 from typing import Dict, Any, Optional
+import unittest
 
 class MockSessionState(dict):
     """Mock implementation of Streamlit's session state.
@@ -221,4 +222,65 @@ def get_test_central():
     Returns:
         ID of the current central node
     """
-    return mock_st.session_state['store']['central'] 
+    return mock_st.session_state['store']['central']
+
+# Testing unittest version of the utility tests
+class TestUtils(unittest.TestCase):
+    """Test case for utility functions."""
+    
+    def test_mock_session_state(self):
+        """Test that the mock session state works correctly."""
+        # Initialize with default values
+        state = MockSessionState()
+        
+        # Check initial values
+        self.assertIn('store', state)
+        self.assertIn('ideas', state['store'])
+        self.assertIn('next_id', state['store'])
+        self.assertIn('central', state['store'])
+        
+        # Test attribute-style access
+        self.assertIsNotNone(state.store)
+        self.assertIsNone(state.nonexistent)
+        
+        # Test modification
+        state['store']['next_id'] = 5
+        self.assertEqual(state['store']['next_id'], 5)
+    
+    def test_mock_streamlit(self):
+        """Test that the mock Streamlit functions correctly."""
+        # Create instance
+        st = MockStreamlit()
+        
+        # Test error function (should not raise exception)
+        st.error("Test error")
+        
+        # Test rerun function (should not raise exception)
+        st.rerun()
+        
+        # Test exception function (should not raise exception)
+        st.exception(ValueError("Test exception"))
+        
+        # Test session state
+        self.assertIsNotNone(st.session_state)
+        self.assertIn('store', st.session_state)
+    
+    def test_test_ideas_helpers(self):
+        """Test the helper functions for setting and getting test ideas."""
+        # Set test ideas
+        test_ideas = [{'id': 1, 'label': 'Test Node'}]
+        set_test_ideas(test_ideas)
+        
+        # Get test ideas and verify
+        retrieved_ideas = get_test_ideas()
+        self.assertEqual(retrieved_ideas, test_ideas)
+        
+        # Set central node
+        set_test_central(1)
+        
+        # Get central node and verify
+        central = get_test_central()
+        self.assertEqual(central, 1)
+        
+if __name__ == '__main__':
+    unittest.main() 
