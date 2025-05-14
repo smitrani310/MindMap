@@ -41,22 +41,6 @@ def collect_descendants(node_id, ideas, descendants=None):
     
     return descendants
 
-def normalize_node_id(node_id: Any) -> int:
-    """Convert any node ID to an integer.
-    
-    Args:
-        node_id: The node ID to normalize (can be string, int, or other)
-        
-    Returns:
-        The node ID as an integer, or None if conversion is not possible
-    """
-    try:
-        return int(node_id)
-    except (ValueError, TypeError):
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Could not convert node_id {node_id} of type {type(node_id).__name__} to integer")
-        return None
-
 def compare_node_ids(id1: Any, id2: Any) -> bool:
     """Safely compare node IDs of potentially different types.
     

@@ -3,7 +3,7 @@ import streamlit as st
 import logging
 from src.state import get_ideas, get_central, set_central, get_next_id, increment_next_id, add_idea, set_ideas, get_store, save_data
 from src.history import save_state_to_history, perform_undo, perform_redo
-from src.utils import recalc_size, collect_descendants
+from src.utils import recalc_size, collect_descendants, find_node_by_id
 from src.message_format import Message, validate_message, create_response_message
 from typing import Dict, Any, Optional
 import uuid
@@ -43,7 +43,7 @@ def is_circular(child_id, parent_id, nodes):
         visited.add(current_id)
         
         # Find the parent node
-        parent_node = next((n for n in nodes if n['id'] == current_id), None)
+        parent_node = find_node_by_id(nodes, current_id)
         if not parent_node:
             return False
             
@@ -379,7 +379,7 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                     logger.warning(f"Reparent request for nonexistent parent: {parent_id}")
                     return create_response_message(message, 'failed', 'Parent node not found')
                 
-                child = next((n for n in ideas if n['id'] == child_id), None)
+                child = find_node_by_id(ideas, child_id)
                 
                 if is_circular(child_id, parent_id, ideas):
                     logger.warning(f"Circular reference detected: {child_id} -> {parent_id}")
@@ -444,7 +444,7 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                 save_state_to_history()
                 # Handle both 'node_id' and 'id' in payload for compatibility
                 node_id = int(message.payload.get('node_id', message.payload.get('id')))
-                node = next((n for n in ideas if n['id'] == node_id), None)
+                node = find_node_by_id(ideas, node_id)
 
                 if not node:
                     logger.warning(f"Edit request for nonexistent node: {node_id}")

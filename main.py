@@ -888,7 +888,7 @@ try:
     # Node Edit Modal
     if 'edit_node' in st.session_state and st.session_state['edit_node'] is not None:
         node_id = st.session_state['edit_node']
-        node = next((n for n in ideas if 'id' in n and n['id'] == node_id), None)
+        node = find_node_by_id(ideas, node_id)
 
         if node:
             with st.form(key=f"edit_node_{node_id}"):
@@ -916,7 +916,7 @@ try:
                                         index=tag_index)
 
                 if node['parent'] is not None:
-                    parent_node = next((n for n in ideas if n['id'] == node['parent']), None)
+                    parent_node = find_node_by_id(ideas, node['parent'])
                     if parent_node:
                         current_parent = parent_node.get('label', 'Untitled Node')
                     else:
@@ -1832,7 +1832,7 @@ try:
     if get_central() is not None:
         central_id = get_central()
         logger.info(f"Using central node ID: {central_id}")
-        display_node = next((n for n in ideas if 'id' in n and n['id'] == central_id), None)
+        display_node = find_node_by_id(ideas, central_id)
         logger.info(f"Found node for central ID: {display_node is not None}")
     
     # Fallback: If no central node, pick the first node if available
