@@ -2,6 +2,8 @@
 import logging
 import math
 from typing import Dict, Any, Optional, Union, List
+import streamlit as st
+from src.utils import handle_error
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +183,7 @@ def update_node_position(node, x, y):
             logger.warning(f"⚠️ Zero coordinates (0, 0) detected after update for node {node_id}. This might indicate a position is not being saved correctly.")
             
     except Exception as e:
-        logger.error(f"Error updating position for node {node_id}: {str(e)}")
+        error_msg = handle_error(e, logger, f"Error updating position for node {node_id}")
         # Restore original values if available
         if orig_x is not None and orig_y is not None:
             node['x'] = orig_x
@@ -250,18 +252,18 @@ def update_node_position_service(node_id: Any, x: Any, y: Any, get_ideas_func, s
                 'message': "Could not retrieve nodes from storage"
             }
     except Exception as e:
-        logger.error(f"Position service: Error getting ideas: {str(e)}")
+        error_msg = handle_error(e, logger, "Position service: Error getting ideas")
         return {
             'success': False,
             'message': f"Error retrieving nodes: {str(e)}"
         }
     
     # Find the node
-    from src.utils import find_node_by_id
-    node = find_node_by_id(ideas, node_id)
+    from src.utils import find_node_by_id, validate_node_exists
+    success, node, error_msg = validate_node_exists(node_id, ideas, 'position update')
     
-    if not node:
-        logger.warning(f"Position service: Node {node_id} not found")
+    if not success:
+        logger.warning(error_msg)
         return {
             'success': False,
             'message': f"Node with id {node_id} not found"
@@ -287,8 +289,8 @@ def update_node_position_service(node_id: Any, x: Any, y: Any, get_ideas_func, s
             'node': node
         }
     except Exception as e:
-        logger.error(f"Position service: Error saving position update: {str(e)}")
+        error_msg = handle_error(e, logger, "Position service: Error saving position update")
         return {
             'success': False,
-            'message': f"Error saving position update: {str(e)}"
+            'message': error_msg
         } 

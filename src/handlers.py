@@ -3,7 +3,7 @@ import streamlit as st
 import logging
 from src.state import get_ideas, get_central, set_central, get_next_id, increment_next_id, add_idea, set_ideas, get_store, save_data
 from src.history import save_state_to_history, perform_undo, perform_redo
-from src.utils import recalc_size, collect_descendants, find_node_by_id, find_closest_node
+from src.utils import recalc_size, collect_descendants, find_node_by_id, find_closest_node, handle_error, validate_node_exists
 from src.message_format import Message, validate_message, create_response_message
 from typing import Dict, Any, Optional
 import uuid
@@ -100,8 +100,8 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                     return create_response_message(message, 'failed', 'No node found near click coordinates')
                     
             except Exception as e:
-                logger.error(f"Error processing canvas click: {str(e)}")
-                return create_response_message(message, 'failed', str(e))
+                error_msg = handle_error(e, logger, "Error processing canvas click")
+                return create_response_message(message, 'failed', error_msg)
                 
         elif message.action == 'canvas_dblclick':
             try:
@@ -126,8 +126,8 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                     return create_response_message(message, 'failed', 'No node found near double-click coordinates')
                     
             except Exception as e:
-                logger.error(f"Error processing canvas double-click: {str(e)}")
-                return create_response_message(message, 'failed', str(e))
+                error_msg = handle_error(e, logger, "Error processing canvas double-click")
+                return create_response_message(message, 'failed', error_msg)
                 
         elif message.action == 'canvas_contextmenu':
             try:
@@ -155,8 +155,8 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                     return create_response_message(message, 'failed', 'No node found near context menu coordinates')
                     
             except Exception as e:
-                logger.error(f"Error processing canvas context menu: {str(e)}")
-                return create_response_message(message, 'failed', str(e))
+                error_msg = handle_error(e, logger, "Error processing canvas context menu")
+                return create_response_message(message, 'failed', error_msg)
                 
         elif message.action == 'undo':
             if perform_undo():
@@ -240,9 +240,8 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                         return create_response_message(message, 'failed', "No positions were updated")
                         
             except Exception as e:
-                logger.error(f"Error processing position update: {str(e)}")
-                logger.error(traceback.format_exc())
-                return create_response_message(message, 'failed', str(e))
+                error_msg = handle_error(e, logger, "Error processing position update")
+                return create_response_message(message, 'failed', error_msg)
                 
         elif message.action == 'edit_modal':
             try:
@@ -255,46 +254,55 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                     logger.warning(f"Edit request for nonexistent node: {node_id}")
                     return create_response_message(message, 'failed', 'Node not found')
             except (ValueError, TypeError, KeyError) as e:
-                logger.error(f"Invalid edit modal request: {message.payload}")
-                return create_response_message(message, 'failed', str(e))
+                error_msg = handle_error(e, logger, "Invalid edit modal request")
+                return create_response_message(message, 'failed', error_msg)
                 
         elif message.action == 'select_node':
             try:
                 node_id = int(message.payload['id'])
                 logger.info(f"Processing select_node action for node ID: {node_id}")
-                if node_id in {n['id'] for n in ideas}:
+                
+                # Use the validation utility
+                success, node, error_msg = validate_node_exists(node_id, ideas, 'select')
+                if success:
                     logger.info(f"Node {node_id} found, setting as selected node")
                     st.session_state['selected_node'] = node_id
                     st.rerun()
                     return create_response_message(message, 'completed')
                 else:
-                    logger.warning(f"Select request for nonexistent node: {node_id}")
+                    logger.warning(error_msg)
                     return create_response_message(message, 'failed', 'Node not found')
             except (ValueError, TypeError, KeyError) as e:
-                logger.error(f"Invalid select node request: {message.payload}")
-                return create_response_message(message, 'failed', str(e))
+                error_msg = handle_error(e, logger, "Invalid select node request")
+                return create_response_message(message, 'failed', error_msg)
                 
         elif message.action == 'center_node':
             try:
                 node_id = int(message.payload['id'])
-                if node_id in {n['id'] for n in ideas}:
+                
+                # Use the validation utility
+                success, node, error_msg = validate_node_exists(node_id, ideas, 'center')
+                if success:
                     set_central(node_id)
                     st.rerun()
                     return create_response_message(message, 'completed')
                 else:
-                    logger.warning(f"Center request for nonexistent node: {node_id}")
+                    logger.warning(error_msg)
                     return create_response_message(message, 'failed', 'Node not found')
             except (ValueError, TypeError, KeyError) as e:
-                logger.error(f"Invalid center node request: {message.payload}")
-                return create_response_message(message, 'failed', str(e))
+                error_msg = handle_error(e, logger, "Invalid center node request")
+                return create_response_message(message, 'failed', error_msg)
                 
         elif message.action == 'delete' or message.action == 'delete_node':
             try:
                 save_state_to_history()
                 # Handle both 'id' and 'node_id' in payload for compatibility
                 node_id = int(message.payload.get('id', message.payload.get('node_id')))
-                if node_id not in {n['id'] for n in ideas}:
-                    logger.warning(f"Delete request for nonexistent node: {node_id}")
+                
+                # Use the validation utility
+                success, node, error_msg = validate_node_exists(node_id, ideas, 'delete')
+                if not success:
+                    logger.warning(error_msg)
                     return create_response_message(message, 'failed', 'Node not found')
                     
                 # Use the utility function to collect descendants
@@ -316,8 +324,8 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                 st.rerun()
                 return create_response_message(message, 'completed')
             except (ValueError, TypeError, KeyError) as e:
-                logger.error(f"Invalid delete request: {message.payload}")
-                return create_response_message(message, 'failed', str(e))
+                error_msg = handle_error(e, logger, "Invalid delete request")
+                return create_response_message(message, 'failed', error_msg)
                 
         elif message.action == 'reparent':
             try:
@@ -326,15 +334,15 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                 parent_id = int(message.payload['parent'])
                 
                 # Validate that both nodes exist
-                if child_id not in {n['id'] for n in ideas}:
-                    logger.warning(f"Reparent request for nonexistent child: {child_id}")
+                child_success, child, child_error = validate_node_exists(child_id, ideas, 'reparent child')
+                if not child_success:
+                    logger.warning(child_error)
                     return create_response_message(message, 'failed', 'Child node not found')
                 
-                if parent_id not in {n['id'] for n in ideas}:
-                    logger.warning(f"Reparent request for nonexistent parent: {parent_id}")
+                parent_success, parent, parent_error = validate_node_exists(parent_id, ideas, 'reparent parent')
+                if not parent_success:
+                    logger.warning(parent_error)
                     return create_response_message(message, 'failed', 'Parent node not found')
-                
-                child = find_node_by_id(ideas, child_id)
                 
                 if is_circular(child_id, parent_id, ideas):
                     logger.warning(f"Circular reference detected: {child_id} -> {parent_id}")
@@ -352,8 +360,8 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                 st.rerun()
                 return create_response_message(message, 'completed')
             except (ValueError, TypeError, KeyError) as e:
-                logger.error(f"Invalid reparent request: {message.payload}")
-                return create_response_message(message, 'failed', str(e))
+                error_msg = handle_error(e, logger, "Invalid reparent request")
+                return create_response_message(message, 'failed', error_msg)
                 
         elif message.action == 'new_node' or message.action == 'create_node':
             try:
@@ -391,18 +399,19 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                 st.rerun()
                 return create_response_message(message, 'completed', None, {'node_id': new_node['id']})
             except (KeyError, ValueError) as e:
-                logger.error(f"Invalid new node request: {message.payload}")
-                return create_response_message(message, 'failed', str(e))
+                error_msg = handle_error(e, logger, "Invalid new node request")
+                return create_response_message(message, 'failed', error_msg)
                 
         elif message.action == 'edit_node':
             try:
                 save_state_to_history()
                 # Handle both 'node_id' and 'id' in payload for compatibility
                 node_id = int(message.payload.get('node_id', message.payload.get('id')))
-                node = find_node_by_id(ideas, node_id)
-
-                if not node:
-                    logger.warning(f"Edit request for nonexistent node: {node_id}")
+                
+                # Use the validation utility
+                success, node, error_msg = validate_node_exists(node_id, ideas, 'edit')
+                if not success:
+                    logger.warning(error_msg)
                     return create_response_message(message, 'failed', 'Node not found')
 
                 # Update node properties with field name compatibility
@@ -426,14 +435,14 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                 st.rerun()
                 return create_response_message(message, 'completed')
             except (ValueError, TypeError, KeyError) as e:
-                logger.error(f"Invalid edit request: {message.payload}")
-                return create_response_message(message, 'failed', str(e))
+                error_msg = handle_error(e, logger, "Invalid edit request")
+                return create_response_message(message, 'failed', error_msg)
         else:
             logger.warning(f"Unknown action type: {message.action}")
             return create_response_message(message, 'failed', 'Unknown action type')
             
     except Exception as e:
-        logger.error(f"Error processing message: {str(e)}")
+        error_msg = handle_error(e, logger, "Error processing message")
         return create_response_message(
             Message(
                 message_id=str(uuid.uuid4()),
@@ -443,5 +452,5 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                 timestamp=datetime.now().timestamp() * 1000
             ),
             'failed',
-            str(e)
+            error_msg
         ) 

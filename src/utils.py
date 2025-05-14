@@ -323,3 +323,27 @@ def handle_error(e: Exception, logger: Optional[logging.Logger] = None,
         logger.error(f"Traceback: {traceback.format_exc()}")
     
     return error_msg 
+
+def validate_node_exists(node_id: Any, ideas: List[Dict[str, Any]], action_name: str = "operation") -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+    """Validate that a node with the given ID exists.
+    
+    A common pattern in handlers for validating node existence before performing actions.
+    
+    Args:
+        node_id: ID of the node to validate
+        ideas: List of all nodes
+        action_name: Name of the action being performed (for error message)
+        
+    Returns:
+        Tuple of (success, node, error_message) where:
+        - success: True if node exists, False otherwise
+        - node: The node if found, None otherwise
+        - error_message: Error message if node doesn't exist, None otherwise
+    """
+    node = find_node_by_id(ideas, node_id)
+    
+    if node:
+        return True, node, None
+    
+    error_message = f"{action_name.capitalize()} request for nonexistent node: {node_id}"
+    return False, None, error_message 
