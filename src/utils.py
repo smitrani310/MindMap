@@ -347,3 +347,162 @@ def validate_node_exists(node_id: Any, ideas: List[Dict[str, Any]], action_name:
     
     error_message = f"{action_name.capitalize()} request for nonexistent node: {node_id}"
     return False, None, error_message 
+
+def validate_payload(payload: Dict[str, Any], required_fields: List[str] = None, field_types: Dict[str, type] = None) -> Tuple[bool, Optional[str], Dict[str, Any]]:
+    """Validate message payload against required fields and types.
+    
+    A utility function for standardizing input validation across handlers.
+    
+    Args:
+        payload: The payload dictionary to validate
+        required_fields: List of field names that must be present
+        field_types: Dictionary mapping field names to their expected types
+        
+    Returns:
+        Tuple of (is_valid, error_message, validated_payload) where:
+        - is_valid: True if validation passed, False otherwise
+        - error_message: Error message if validation failed, None otherwise
+        - validated_payload: The validated payload (may include type conversions)
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Create a copy of the payload for validation
+    validated = payload.copy() if payload else {}
+    
+    # Check for required fields
+    if required_fields:
+        for field in required_fields:
+            if field not in validated:
+                error_msg = f"Missing required field: {field}"
+                logger.warning(error_msg)
+                return False, error_msg, validated
+    
+    # Check field types if specified
+    if field_types:
+        for field, expected_type in field_types.items():
+            # Skip fields that aren't present (they're handled by required_fields check)
+            if field not in validated:
+                continue
+                
+            # Skip None values unless the field is required
+            if validated[field] is None:
+                if required_fields and field in required_fields:
+                    error_msg = f"Field '{field}' is required and cannot be None"
+                    logger.warning(error_msg)
+                    return False, error_msg, validated
+                continue
+            
+            # Check if field value matches expected type
+            if not isinstance(validated[field], expected_type):
+                # Try to convert some common types
+                try:
+                    if expected_type is int:
+                        validated[field] = int(validated[field])
+                    elif expected_type is float:
+                        validated[field] = float(validated[field])
+                    elif expected_type is str:
+                        validated[field] = str(validated[field])
+                    elif expected_type is bool:
+                        # Handle common string representations of bool
+                        if isinstance(validated[field], str):
+                            if validated[field].lower() in ('true', 'yes', '1', 'y'):
+                                validated[field] = True
+                            elif validated[field].lower() in ('false', 'no', '0', 'n'):
+                                validated[field] = False
+                            else:
+                                raise ValueError(f"Cannot convert '{validated[field]}' to bool")
+                        else:
+                            validated[field] = bool(validated[field])
+                    else:
+                        # For other types, we can't do automatic conversion
+                        error_msg = f"Field '{field}' has incorrect type: expected {expected_type.__name__}, got {type(validated[field]).__name__}"
+                        logger.warning(error_msg)
+                        return False, error_msg, validated
+                except (ValueError, TypeError) as e:
+                    error_msg = f"Cannot convert field '{field}' to {expected_type.__name__}: {str(e)}"
+                    logger.warning(error_msg)
+                    return False, error_msg, validated
+    
+    return True, None, validated 
+
+def extract_canvas_coordinates(payload: Dict[str, Any]) -> Tuple[bool, Optional[str], Dict[str, float]]:
+    """Extract and validate canvas coordinates from a message payload.
+    
+    Args:
+        payload: The message payload containing coordinate data
+        
+    Returns:
+        Tuple of (success, error_message, coordinates) where:
+        - success: True if coordinates were valid, False otherwise
+        - error_message: Error message if validation failed, None otherwise
+        - coordinates: Dictionary containing x, y, canvasWidth, canvasHeight
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Define required fields and types
+    required_fields = ['x', 'y']
+    field_types = {
+        'x': float,
+        'y': float,
+        'canvasWidth': float,
+        'canvasHeight': float
+    }
+    
+    # Use the payload validation utility
+    is_valid, error_msg, validated_payload = validate_payload(
+        payload,
+        required_fields=required_fields,
+        field_types=field_types
+    )
+    
+    if not is_valid:
+        return False, error_msg, {}
+    
+    # Set default canvas dimensions if not provided
+    if 'canvasWidth' not in validated_payload:
+        validated_payload['canvasWidth'] = 800.0
+        logger.debug("Canvas width not provided, using default (800)")
+    
+    if 'canvasHeight' not in validated_payload:
+        validated_payload['canvasHeight'] = 600.0
+        logger.debug("Canvas height not provided, using default (600)")
+    
+    # Extract only the coordinate-related fields
+    coordinates = {
+        'x': validated_payload['x'],
+        'y': validated_payload['y'],
+        'canvasWidth': validated_payload['canvasWidth'],
+        'canvasHeight': validated_payload['canvasHeight']
+    }
+    
+    logger.debug(f"Extracted canvas coordinates: ({coordinates['x']}, {coordinates['y']}) on {coordinates['canvasWidth']}x{coordinates['canvasHeight']} canvas")
+    
+    return True, None, coordinates 
+
+def standard_response(message: Any, success: bool, error_message: Optional[str] = None, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Create a standardized response format.
+    
+    Args:
+        message: The original message to respond to
+        success: Whether the operation was successful
+        error_message: Error message if operation failed
+        data: Optional data to include in the response
+        
+    Returns:
+        A standardized response dictionary ready to be sent
+    """
+    from src.message_format import create_response_message
+    
+    # Prepare the response data
+    status = 'completed' if success else 'failed'
+    
+    # For errors, use error_message as payload
+    if not success and error_message:
+        return create_response_message(message, status, error_message)
+    
+    # For success with data, include data as payload
+    if success and data:
+        return create_response_message(message, status, None, data)
+    
+    # For simple success without data
+    return create_response_message(message, status) 

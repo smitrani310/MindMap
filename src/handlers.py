@@ -3,15 +3,24 @@ import streamlit as st
 import logging
 from src.state import get_ideas, get_central, set_central, get_next_id, increment_next_id, add_idea, set_ideas, get_store, save_data
 from src.history import save_state_to_history, perform_undo, perform_redo
-from src.utils import recalc_size, collect_descendants, find_node_by_id, find_closest_node, handle_error, validate_node_exists
+from src.utils import recalc_size, collect_descendants, find_node_by_id, find_closest_node, handle_error, validate_node_exists, validate_payload, extract_canvas_coordinates, standard_response
 from src.message_format import Message, validate_message, create_response_message
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable, List, Tuple
 import uuid
 from datetime import datetime
 from src.node_utils import update_node_position, update_node_position_service
+from src.canvas_utils import handle_canvas_interaction
+from src.position_utils import handle_position_message
 import traceback
 
 logger = logging.getLogger(__name__)
+
+# Registry of message handlers
+_message_handlers = {}
+
+def register_handler(action: str, handler_func: Callable):
+    """Register a message handler function for a specific action."""
+    _message_handlers[action] = handler_func
 
 def handle_exception(e):
     """Handle exceptions with proper logging and user feedback."""
@@ -51,6 +60,370 @@ def is_circular(child_id, parent_id, nodes):
         
     return False
 
+# Canvas-related handler functions
+def handle_canvas_click(message: Message) -> Dict[str, Any]:
+    """Handle canvas click events using the canvas utilities."""
+    return handle_canvas_interaction(message, 'click')
+
+def handle_canvas_dblclick(message: Message) -> Dict[str, Any]:
+    """Handle canvas double-click events using the canvas utilities."""
+    return handle_canvas_interaction(message, 'dblclick')
+
+def handle_canvas_contextmenu(message: Message) -> Dict[str, Any]:
+    """Handle canvas context menu events using the canvas utilities."""
+    return handle_canvas_interaction(message, 'contextmenu')
+
+def handle_undo(message: Message) -> Dict[str, Any]:
+    """Handle undo requests."""
+    if perform_undo():
+        st.rerun()
+    return standard_response(message, True)
+
+def handle_redo(message: Message) -> Dict[str, Any]:
+    """Handle redo requests."""
+    if perform_redo():
+        st.rerun()
+    return standard_response(message, True)
+
+def handle_position_update(message: Message) -> Dict[str, Any]:
+    """Handle node position updates using position utilities."""
+    try:
+        # Use the centralized position handler
+        result = handle_position_message(
+            message=message,
+            get_ideas_func=get_ideas,
+            set_ideas_func=set_ideas,
+            save_state_func=save_state_to_history,
+            save_data_func=save_data,
+            get_store_func=get_store
+        )
+        
+        # Return standard response based on the result
+        if result['success']:
+            logger.info(f"Position update success: {result['message']}")
+            return standard_response(message, True)
+        else:
+            logger.warning(f"Position update failed: {result['message']}")
+            return standard_response(message, False, result['message'])
+            
+    except Exception as e:
+        error_msg = handle_error(e, logger, "Error processing position update")
+        return standard_response(message, False, error_msg)
+
+def handle_edit_modal(message: Message) -> Dict[str, Any]:
+    """Handle edit modal requests."""
+    try:
+        ideas = get_ideas()
+        
+        # Validate payload
+        is_valid, error_msg, validated_payload = validate_payload(
+            message.payload,
+            required_fields=['id'],
+            field_types={'id': int}
+        )
+        
+        if not is_valid:
+            logger.warning(error_msg)
+            return standard_response(message, False, error_msg)
+            
+        node_id = validated_payload['id']
+        
+        # Validate node exists
+        success, node, error_msg = validate_node_exists(node_id, ideas, 'edit modal')
+        if success:
+            st.session_state['edit_node'] = node_id
+            st.rerun()
+            return standard_response(message, True)
+        else:
+            logger.warning(error_msg)
+            return standard_response(message, False, 'Node not found')
+            
+    except Exception as e:
+        error_msg = handle_error(e, logger, "Invalid edit modal request")
+        return standard_response(message, False, error_msg)
+
+def handle_select_node(message: Message) -> Dict[str, Any]:
+    """Handle node selection requests."""
+    try:
+        ideas = get_ideas()
+        
+        # Validate payload
+        is_valid, error_msg, validated_payload = validate_payload(
+            message.payload,
+            required_fields=['id'],
+            field_types={'id': int}
+        )
+        
+        if not is_valid:
+            logger.warning(error_msg)
+            return standard_response(message, False, error_msg)
+        
+        node_id = validated_payload['id']
+        logger.info(f"Processing select_node action for node ID: {node_id}")
+        
+        # Use the validation utility
+        success, node, error_msg = validate_node_exists(node_id, ideas, 'select')
+        if success:
+            logger.info(f"Node {node_id} found, setting as selected node")
+            st.session_state['selected_node'] = node_id
+            st.rerun()
+            return standard_response(message, True)
+        else:
+            logger.warning(error_msg)
+            return standard_response(message, False, 'Node not found')
+    except Exception as e:
+        error_msg = handle_error(e, logger, "Error processing select node request")
+        return standard_response(message, False, error_msg)
+
+def handle_center_node(message: Message) -> Dict[str, Any]:
+    """Handle node centering requests."""
+    try:
+        ideas = get_ideas()
+        
+        # Validate payload
+        is_valid, error_msg, validated_payload = validate_payload(
+            message.payload,
+            required_fields=['id'],
+            field_types={'id': int}
+        )
+        
+        if not is_valid:
+            logger.warning(error_msg)
+            return standard_response(message, False, error_msg)
+        
+        node_id = validated_payload['id']
+        
+        # Use the validation utility
+        success, node, error_msg = validate_node_exists(node_id, ideas, 'center')
+        if success:
+            set_central(node_id)
+            st.rerun()
+            return standard_response(message, True)
+        else:
+            logger.warning(error_msg)
+            return standard_response(message, False, 'Node not found')
+    except Exception as e:
+        error_msg = handle_error(e, logger, "Error processing center node request")
+        return standard_response(message, False, error_msg)
+
+def handle_delete_node(message: Message) -> Dict[str, Any]:
+    """Handle node deletion requests."""
+    try:
+        ideas = get_ideas()
+        save_state_to_history()
+        
+        # Handle both 'id' and 'node_id' in payload for compatibility
+        # Validate payload
+        is_valid, error_msg, validated_payload = validate_payload(
+            message.payload,
+            field_types={'id': int, 'node_id': int}
+        )
+        
+        if not is_valid:
+            logger.warning(error_msg)
+            return standard_response(message, False, error_msg)
+            
+        # Use either id or node_id
+        node_id = validated_payload.get('id', validated_payload.get('node_id'))
+        if node_id is None:
+            return standard_response(message, False, "Missing node id")
+        
+        # Use the validation utility
+        success, node, error_msg = validate_node_exists(node_id, ideas, 'delete')
+        if not success:
+            logger.warning(error_msg)
+            return standard_response(message, False, 'Node not found')
+            
+        # Use the utility function to collect descendants
+        to_remove = collect_descendants(node_id, ideas)
+        
+        set_ideas([n for n in ideas if n['id'] not in to_remove])
+        
+        if get_central() in to_remove:
+            set_central(None)
+            
+        # Also clear selected node if it was deleted
+        if 'selected_node' in st.session_state and st.session_state['selected_node'] in to_remove:
+            st.session_state['selected_node'] = None
+        
+        # Save changes to data file
+        logger.debug(f"Saving after deleting node {node_id} and {len(to_remove)-1} descendants")
+        save_data(get_store())
+            
+        st.rerun()
+        return standard_response(message, True)
+    except Exception as e:
+        error_msg = handle_error(e, logger, "Invalid delete request")
+        return standard_response(message, False, error_msg)
+
+def handle_reparent_node(message: Message) -> Dict[str, Any]:
+    """Handle node reparenting requests."""
+    try:
+        ideas = get_ideas()
+        save_state_to_history()
+        
+        # Validate payload
+        is_valid, error_msg, validated_payload = validate_payload(
+            message.payload,
+            required_fields=['id', 'parent'],
+            field_types={'id': int, 'parent': int}
+        )
+        
+        if not is_valid:
+            logger.warning(error_msg)
+            return standard_response(message, False, error_msg)
+            
+        child_id = validated_payload['id']
+        parent_id = validated_payload['parent']
+        
+        # Validate that both nodes exist
+        child_success, child, child_error = validate_node_exists(child_id, ideas, 'reparent child')
+        if not child_success:
+            logger.warning(child_error)
+            return standard_response(message, False, 'Child node not found')
+        
+        parent_success, parent, parent_error = validate_node_exists(parent_id, ideas, 'reparent parent')
+        if not parent_success:
+            logger.warning(parent_error)
+            return standard_response(message, False, 'Parent node not found')
+        
+        if is_circular(child_id, parent_id, ideas):
+            logger.warning(f"Circular reference detected: {child_id} -> {parent_id}")
+            return standard_response(message, False, 'Cannot create circular parent-child relationships')
+            
+        child['parent'] = parent_id
+        if not child.get('edge_type'):
+            child['edge_type'] = 'default'
+        
+        # Save changes to data file
+        logger.debug(f"Saving after reparenting node {child_id} to parent {parent_id}")
+        set_ideas(ideas)
+        save_data(get_store())
+            
+        st.rerun()
+        return standard_response(message, True)
+    except Exception as e:
+        error_msg = handle_error(e, logger, "Invalid reparent request")
+        return standard_response(message, False, error_msg)
+
+def handle_new_node(message: Message) -> Dict[str, Any]:
+    """Handle new node creation requests."""
+    try:
+        save_state_to_history()
+        central = get_central()
+        
+        # Validate payload
+        is_valid, error_msg, validated_payload = validate_payload(
+            message.payload,
+            field_types={
+                'label': str,
+                'title': str,
+                'description': str,
+                'urgency': str,
+                'tag': str,
+                'x': float,
+                'y': float
+            }
+        )
+        
+        if not is_valid:
+            logger.warning(error_msg)
+            return standard_response(message, False, error_msg)
+            
+        # Map the payload fields for compatibility
+        label = validated_payload.get('label', validated_payload.get('title', ''))
+        description = validated_payload.get('description', '')
+        
+        # Validate label
+        if not label:
+            logger.warning("New node request with empty label")
+            return standard_response(message, False, 'New node request with empty label')
+            
+        new_node = {
+            'id': get_next_id(),
+            'label': label.strip(),
+            'description': description,
+            'urgency': validated_payload.get('urgency', 'medium'),
+            'tag': validated_payload.get('tag', ''),
+            'parent': central,
+            'edge_type': 'default' if central is not None else None,
+            'x': validated_payload.get('x'),
+            'y': validated_payload.get('y')
+        }
+        recalc_size(new_node)
+        add_idea(new_node)
+        increment_next_id()
+        
+        # Save changes to data file
+        logger.debug(f"Saving after creating new node with ID {new_node['id']}")
+        save_data(get_store())
+        
+        st.rerun()
+        return standard_response(message, True, None, {'node_id': new_node['id']})
+    except Exception as e:
+        error_msg = handle_error(e, logger, "Invalid new node request")
+        return standard_response(message, False, error_msg)
+
+def handle_edit_node(message: Message) -> Dict[str, Any]:
+    """Handle node editing requests."""
+    try:
+        ideas = get_ideas()
+        save_state_to_history()
+        
+        # Validate the payload
+        is_valid, error_msg, validated_payload = validate_payload(
+            message.payload,
+            required_fields=['id'] if 'id' in message.payload else ['node_id'],
+            field_types={
+                'id': int, 
+                'node_id': int,
+                'label': str,
+                'title': str,
+                'description': str,
+                'urgency': str,
+                'tag': str,
+                'x': float,
+                'y': float
+            }
+        )
+        
+        if not is_valid:
+            logger.warning(error_msg)
+            return standard_response(message, False, error_msg)
+        
+        # Handle both 'node_id' and 'id' in payload for compatibility
+        node_id = validated_payload.get('node_id', validated_payload.get('id'))
+        
+        # Use the validation utility
+        success, node, error_msg = validate_node_exists(node_id, ideas, 'edit')
+        if not success:
+            logger.warning(error_msg)
+            return standard_response(message, False, 'Node not found')
+
+        # Update node properties with field name compatibility
+        if 'label' in validated_payload or 'title' in validated_payload:
+            node['label'] = validated_payload.get('label', validated_payload.get('title')).strip()
+        if 'description' in validated_payload:
+            node['description'] = validated_payload['description']
+        if 'urgency' in validated_payload:
+            node['urgency'] = validated_payload['urgency']
+        if 'tag' in validated_payload:
+            node['tag'] = validated_payload['tag']
+        if 'x' in validated_payload:
+            node['x'] = validated_payload['x']
+        if 'y' in validated_payload:
+            node['y'] = validated_payload['y']
+
+        recalc_size(node)
+        set_ideas(ideas)
+        save_data(get_store())
+
+        st.rerun()
+        return standard_response(message, True)
+    except Exception as e:
+        error_msg = handle_error(e, logger, "Error processing edit node request")
+        return standard_response(message, False, error_msg)
+
 def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
     """Handle messages from the client using standardized message format."""
     try:
@@ -72,374 +445,21 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
         # Convert to Message object
         message = Message.from_dict(msg_data)
         logger.info(f"Processing message: {message.action} (ID: {message.message_id})")
-
-        # Get current ideas
-        ideas = get_ideas()
+            
+        # Check if we have a registered handler for this action
+        action = message.action
         
-        # Process different action types
-        if message.action == 'canvas_click':
-            try:
-                # Extract click coordinates
-                click_x = message.payload.get('x', 0)
-                click_y = message.payload.get('y', 0)
-                canvas_width = message.payload.get('canvasWidth', 800)
-                canvas_height = message.payload.get('canvasHeight', 600)
-                
-                # Use utility function to find the closest node
-                closest_node, min_distance, click_threshold = find_closest_node(
-                    ideas, click_x, click_y, canvas_width, canvas_height
-                )
-                
-                if closest_node and min_distance <= click_threshold:
-                    # Select the node
-                    st.session_state['selected_node'] = closest_node['id']
-                    st.rerun()
-                    return create_response_message(message, 'completed')
-                else:
-                    logger.warning(f"No node found near click coordinates (closest: {closest_node['label'] if closest_node else 'None'} at distance: {min_distance:.2f}, threshold: {click_threshold:.2f})")
-                    return create_response_message(message, 'failed', 'No node found near click coordinates')
-                    
-            except Exception as e:
-                error_msg = handle_error(e, logger, "Error processing canvas click")
-                return create_response_message(message, 'failed', error_msg)
-                
-        elif message.action == 'canvas_dblclick':
-            try:
-                # Extract click coordinates
-                click_x = message.payload.get('x', 0)
-                click_y = message.payload.get('y', 0)
-                canvas_width = message.payload.get('canvasWidth', 800)
-                canvas_height = message.payload.get('canvasHeight', 600)
-                
-                # Use utility function to find the closest node
-                closest_node, min_distance, click_threshold = find_closest_node(
-                    ideas, click_x, click_y, canvas_width, canvas_height
-                )
-                
-                if closest_node and min_distance <= click_threshold:
-                    # Open edit modal for the node
-                    st.session_state['edit_node'] = closest_node['id']
-                    st.rerun()
-                    return create_response_message(message, 'completed')
-                else:
-                    logger.warning(f"No node found near double-click coordinates")
-                    return create_response_message(message, 'failed', 'No node found near double-click coordinates')
-                    
-            except Exception as e:
-                error_msg = handle_error(e, logger, "Error processing canvas double-click")
-                return create_response_message(message, 'failed', error_msg)
-                
-        elif message.action == 'canvas_contextmenu':
-            try:
-                # Extract click coordinates
-                click_x = message.payload.get('x', 0)
-                click_y = message.payload.get('y', 0)
-                canvas_width = message.payload.get('canvasWidth', 800)
-                canvas_height = message.payload.get('canvasHeight', 600)
-                
-                # Use utility function to find the closest node
-                closest_node, min_distance, click_threshold = find_closest_node(
-                    ideas, click_x, click_y, canvas_width, canvas_height
-                )
-                
-                if closest_node and min_distance <= click_threshold:
-                    # Delete the node
-                    save_state_to_history()
-                    ideas.remove(closest_node)
-                    set_ideas(ideas)
-                    save_data(get_store())
-                    st.rerun()
-                    return create_response_message(message, 'completed')
-                else:
-                    logger.warning(f"No node found near context menu coordinates")
-                    return create_response_message(message, 'failed', 'No node found near context menu coordinates')
-                    
-            except Exception as e:
-                error_msg = handle_error(e, logger, "Error processing canvas context menu")
-                return create_response_message(message, 'failed', error_msg)
-                
-        elif message.action == 'undo':
-            if perform_undo():
-                st.rerun()
-            return create_response_message(message, 'completed')
-            
-        elif message.action == 'redo':
-            if perform_redo():
-                st.rerun()
-            return create_response_message(message, 'completed')
-            
-        elif message.action == 'pos':
-            try:
-                # Log the payload for debugging
-                logger.debug(f"Position update payload in handlers.py: {message.payload}")
-                
-                # Check for direct format (id, x, y)
-                node_id = message.payload.get('id')
-                new_x = message.payload.get('x')
-                new_y = message.payload.get('y')
-                
-                if node_id is not None and new_x is not None and new_y is not None:
-                    # Direct format - use the position service
-                    logger.info(f"Using position service to update node {node_id} to ({new_x}, {new_y})")
-                    
-                    result = update_node_position_service(
-                        node_id=node_id,
-                        x=new_x,
-                        y=new_y,
-                        get_ideas_func=get_ideas,
-                        set_ideas_func=set_ideas,
-                        save_state_func=save_state_to_history,
-                        save_data_func=save_data,
-                        get_store_func=get_store
-                    )
-                    
-                    if result['success']:
-                        logger.info(f"Position update success: {result['message']}")
-                        return create_response_message(message, 'completed')
-                    else:
-                        logger.warning(f"Position update failed: {result['message']}")
-                        return create_response_message(message, 'failed', result['message'])
-                        
-                else:
-                    # Object format - multiple nodes at once
-                    position_updated = False
-                    results = []
-                    
-                    # Check each key in the payload for node IDs
-                    for k, v in message.payload.items():
-                        # Skip known non-ID keys
-                        if k in ('source', 'action', 'timestamp', 'message_id'):
-                            continue
-                            
-                        # Check if this is a node position update
-                        if isinstance(v, dict) and 'x' in v and 'y' in v:
-                            logger.info(f"Using position service to update node {k} to ({v['x']}, {v['y']})")
-                            
-                            result = update_node_position_service(
-                                node_id=k,
-                                x=v['x'],
-                                y=v['y'],
-                                get_ideas_func=get_ideas,
-                                set_ideas_func=set_ideas,
-                                save_state_func=save_state_to_history,
-                                save_data_func=save_data,
-                                get_store_func=get_store
-                            )
-                            
-                            results.append(result)
-                            if result['success']:
-                                position_updated = True
-                    
-                    # Return overall status based on results
-                    if position_updated:
-                        logger.info("Successfully updated one or more node positions")
-                        return create_response_message(message, 'completed')
-                    else:
-                        error_messages = [r['message'] for r in results if not r['success']]
-                        logger.warning(f"No positions were updated: {error_messages}")
-                        return create_response_message(message, 'failed', "No positions were updated")
-                        
-            except Exception as e:
-                error_msg = handle_error(e, logger, "Error processing position update")
-                return create_response_message(message, 'failed', error_msg)
-                
-        elif message.action == 'edit_modal':
-            try:
-                node_id = int(message.payload['id'])
-                if node_id in {n['id'] for n in ideas}:
-                    st.session_state['edit_node'] = node_id
-                    st.rerun()
-                    return create_response_message(message, 'completed')
-                else:
-                    logger.warning(f"Edit request for nonexistent node: {node_id}")
-                    return create_response_message(message, 'failed', 'Node not found')
-            except (ValueError, TypeError, KeyError) as e:
-                error_msg = handle_error(e, logger, "Invalid edit modal request")
-                return create_response_message(message, 'failed', error_msg)
-                
-        elif message.action == 'select_node':
-            try:
-                node_id = int(message.payload['id'])
-                logger.info(f"Processing select_node action for node ID: {node_id}")
-                
-                # Use the validation utility
-                success, node, error_msg = validate_node_exists(node_id, ideas, 'select')
-                if success:
-                    logger.info(f"Node {node_id} found, setting as selected node")
-                    st.session_state['selected_node'] = node_id
-                    st.rerun()
-                    return create_response_message(message, 'completed')
-                else:
-                    logger.warning(error_msg)
-                    return create_response_message(message, 'failed', 'Node not found')
-            except (ValueError, TypeError, KeyError) as e:
-                error_msg = handle_error(e, logger, "Invalid select node request")
-                return create_response_message(message, 'failed', error_msg)
-                
-        elif message.action == 'center_node':
-            try:
-                node_id = int(message.payload['id'])
-                
-                # Use the validation utility
-                success, node, error_msg = validate_node_exists(node_id, ideas, 'center')
-                if success:
-                    set_central(node_id)
-                    st.rerun()
-                    return create_response_message(message, 'completed')
-                else:
-                    logger.warning(error_msg)
-                    return create_response_message(message, 'failed', 'Node not found')
-            except (ValueError, TypeError, KeyError) as e:
-                error_msg = handle_error(e, logger, "Invalid center node request")
-                return create_response_message(message, 'failed', error_msg)
-                
-        elif message.action == 'delete' or message.action == 'delete_node':
-            try:
-                save_state_to_history()
-                # Handle both 'id' and 'node_id' in payload for compatibility
-                node_id = int(message.payload.get('id', message.payload.get('node_id')))
-                
-                # Use the validation utility
-                success, node, error_msg = validate_node_exists(node_id, ideas, 'delete')
-                if not success:
-                    logger.warning(error_msg)
-                    return create_response_message(message, 'failed', 'Node not found')
-                    
-                # Use the utility function to collect descendants
-                to_remove = collect_descendants(node_id, ideas)
-                
-                set_ideas([n for n in ideas if n['id'] not in to_remove])
-                
-                if get_central() in to_remove:
-                    set_central(None)
-                    
-                # Also clear selected node if it was deleted
-                if 'selected_node' in st.session_state and st.session_state['selected_node'] in to_remove:
-                    st.session_state['selected_node'] = None
-                
-                # Save changes to data file
-                logger.debug(f"Saving after deleting node {node_id} and {len(to_remove)-1} descendants")
-                save_data(get_store())
-                    
-                st.rerun()
-                return create_response_message(message, 'completed')
-            except (ValueError, TypeError, KeyError) as e:
-                error_msg = handle_error(e, logger, "Invalid delete request")
-                return create_response_message(message, 'failed', error_msg)
-                
-        elif message.action == 'reparent':
-            try:
-                save_state_to_history()
-                child_id = int(message.payload['id'])
-                parent_id = int(message.payload['parent'])
-                
-                # Validate that both nodes exist
-                child_success, child, child_error = validate_node_exists(child_id, ideas, 'reparent child')
-                if not child_success:
-                    logger.warning(child_error)
-                    return create_response_message(message, 'failed', 'Child node not found')
-                
-                parent_success, parent, parent_error = validate_node_exists(parent_id, ideas, 'reparent parent')
-                if not parent_success:
-                    logger.warning(parent_error)
-                    return create_response_message(message, 'failed', 'Parent node not found')
-                
-                if is_circular(child_id, parent_id, ideas):
-                    logger.warning(f"Circular reference detected: {child_id} -> {parent_id}")
-                    return create_response_message(message, 'failed', 'Cannot create circular parent-child relationships')
-                    
-                child['parent'] = parent_id
-                if not child.get('edge_type'):
-                    child['edge_type'] = 'default'
-                
-                # Save changes to data file
-                logger.debug(f"Saving after reparenting node {child_id} to parent {parent_id}")
-                set_ideas(ideas)
-                save_data(get_store())
-                    
-                st.rerun()
-                return create_response_message(message, 'completed')
-            except (ValueError, TypeError, KeyError) as e:
-                error_msg = handle_error(e, logger, "Invalid reparent request")
-                return create_response_message(message, 'failed', error_msg)
-                
-        elif message.action == 'new_node' or message.action == 'create_node':
-            try:
-                save_state_to_history()
-                central = get_central()
-                
-                # Map the payload fields for compatibility
-                label = message.payload.get('label', message.payload.get('title', ''))
-                description = message.payload.get('description', '')
-                
-                # Validate label
-                if not label:
-                    logger.warning("New node request with empty label")
-                    return create_response_message(message, 'failed', 'New node request with empty label')
-                    
-                new_node = {
-                    'id': get_next_id(),
-                    'label': label.strip(),
-                    'description': description,
-                    'urgency': message.payload.get('urgency', 'medium'),
-                    'tag': message.payload.get('tag', ''),
-                    'parent': central,
-                    'edge_type': 'default' if central is not None else None,
-                    'x': message.payload.get('x'),
-                    'y': message.payload.get('y')
-                }
-                recalc_size(new_node)
-                add_idea(new_node)
-                increment_next_id()
-                
-                # Save changes to data file
-                logger.debug(f"Saving after creating new node with ID {new_node['id']}")
-                save_data(get_store())
-                
-                st.rerun()
-                return create_response_message(message, 'completed', None, {'node_id': new_node['id']})
-            except (KeyError, ValueError) as e:
-                error_msg = handle_error(e, logger, "Invalid new node request")
-                return create_response_message(message, 'failed', error_msg)
-                
-        elif message.action == 'edit_node':
-            try:
-                save_state_to_history()
-                # Handle both 'node_id' and 'id' in payload for compatibility
-                node_id = int(message.payload.get('node_id', message.payload.get('id')))
-                
-                # Use the validation utility
-                success, node, error_msg = validate_node_exists(node_id, ideas, 'edit')
-                if not success:
-                    logger.warning(error_msg)
-                    return create_response_message(message, 'failed', 'Node not found')
-
-                # Update node properties with field name compatibility
-                if 'label' in message.payload or 'title' in message.payload:
-                    node['label'] = message.payload.get('label', message.payload.get('title')).strip()
-                if 'description' in message.payload:
-                    node['description'] = message.payload['description']
-                if 'urgency' in message.payload:
-                    node['urgency'] = message.payload['urgency']
-                if 'tag' in message.payload:
-                    node['tag'] = message.payload['tag']
-                if 'x' in message.payload:
-                    node['x'] = message.payload['x']
-                if 'y' in message.payload:
-                    node['y'] = message.payload['y']
-
-                recalc_size(node)
-                set_ideas(ideas)
-                save_data(get_store())
-
-                st.rerun()
-                return create_response_message(message, 'completed')
-            except (ValueError, TypeError, KeyError) as e:
-                error_msg = handle_error(e, logger, "Invalid edit request")
-                return create_response_message(message, 'failed', error_msg)
+        # Map deprecated action names to standardized ones
+        if action == 'delete':
+            action = 'delete_node'
+        elif action == 'create_node':
+            action = 'new_node'
+        
+        if action in _message_handlers:
+            return _message_handlers[action](message)
         else:
-            logger.warning(f"Unknown action type: {message.action}")
-            return create_response_message(message, 'failed', 'Unknown action type')
+            logger.warning(f"No handler registered for action: {action}")
+            return standard_response(message, False, f"Unknown action type: {action}")
             
     except Exception as e:
         error_msg = handle_error(e, logger, "Error processing message")
@@ -453,4 +473,19 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
             ),
             'failed',
             error_msg
-        ) 
+        )
+
+# Register all handlers
+register_handler('canvas_click', handle_canvas_click)
+register_handler('canvas_dblclick', handle_canvas_dblclick)
+register_handler('canvas_contextmenu', handle_canvas_contextmenu)
+register_handler('undo', handle_undo)
+register_handler('redo', handle_redo)
+register_handler('pos', handle_position_update)
+register_handler('edit_modal', handle_edit_modal)
+register_handler('select_node', handle_select_node)
+register_handler('center_node', handle_center_node)
+register_handler('delete_node', handle_delete_node)
+register_handler('reparent', handle_reparent_node)
+register_handler('new_node', handle_new_node)
+register_handler('edit_node', handle_edit_node) 
