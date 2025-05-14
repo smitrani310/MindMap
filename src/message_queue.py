@@ -48,6 +48,7 @@ except ImportError:
     def save_data(state): pass
 
 from src.message_format import Message, create_response_message
+from src.utils import collect_descendants, find_node_by_id, canvas_to_node_coordinates, node_to_canvas_coordinates
 
 logger = logging.getLogger(__name__)
 
@@ -59,42 +60,6 @@ class QueuedMessage:
     max_retries: int = 3
     last_retry_time: float = 0
     retry_delay: float = 1.0  # seconds
-
-def canvas_to_node_coordinates(canvas_x, canvas_y, canvas_width, canvas_height):
-    """Convert canvas coordinates to node coordinates.
-    
-    Canvas center maps to (0,0) in node coordinates.
-    
-    Args:
-        canvas_x: X coordinate on canvas
-        canvas_y: Y coordinate on canvas
-        canvas_width: Width of the canvas
-        canvas_height: Height of the canvas
-        
-    Returns:
-        Tuple of (node_x, node_y)
-    """
-    node_x = canvas_x - canvas_width/2
-    node_y = canvas_y - canvas_height/2
-    return node_x, node_y
-    
-def node_to_canvas_coordinates(node_x, node_y, canvas_width, canvas_height):
-    """Convert node coordinates to canvas coordinates.
-    
-    Node position (0,0) maps to canvas center.
-    
-    Args:
-        node_x: X coordinate in node space
-        node_y: Y coordinate in node space
-        canvas_width: Width of the canvas
-        canvas_height: Height of the canvas
-        
-    Returns:
-        Tuple of (canvas_x, canvas_y)
-    """
-    canvas_x = node_x + canvas_width/2
-    canvas_y = node_y + canvas_height/2
-    return canvas_x, canvas_y
 
 class MessageQueue:
     """Handles message queuing and retry logic."""
@@ -754,22 +719,14 @@ class MessageQueue:
                 logger.warning(f"Node with id {node_id} not found")
                 return create_response_message(message, 'failed', f"Node with id {node_id} not found")
             
-            # Collect all descendants to delete
+            # Use utility function to collect all descendants to delete
             to_delete = set()
-            
-            def collect_descendants(nid):
-                to_delete.add(nid)
-                for idea in ideas:
-                    parent_id = idea.get('parent')
-                    # Check if this node's parent is the one we're deleting
-                    if (parent_id == nid or 
-                        (isinstance(parent_id, int) and str(parent_id) == str(nid)) or
-                        (isinstance(nid, int) and str(nid) == str(parent_id))):
-                        collect_descendants(idea.get('id'))
             
             # Delete all matching nodes and their descendants
             for mid in matching_ids:
-                collect_descendants(mid)
+                # Use utility function to collect descendants for each matching ID
+                node_descendants = collect_descendants(mid, ideas)
+                to_delete.update(node_descendants)
             
             logger.debug(f"Will delete nodes: {to_delete}")
             
@@ -856,37 +813,28 @@ class MessageQueue:
                 logger.error(f"Missing position data: id={node_id}, x={new_x}, y={new_y}")
                 return create_response_message(message, 'failed', "Missing required position data")
             
-            # Log the position update
-            logger.info(f"Updating position for node {node_id} to ({new_x}, {new_y})")
+            # Use the centralized position service
+            from src.node_utils import update_node_position_service
+            from src.history import save_state_to_history
             
-            # Find and update the node position
-            ideas = get_ideas()
-            node_updated = False
+            result = update_node_position_service(
+                node_id=node_id,
+                x=new_x,
+                y=new_y,
+                get_ideas_func=get_ideas,
+                set_ideas_func=set_ideas,
+                save_state_func=save_state_to_history,
+                save_data_func=save_data,
+                get_store_func=get_store
+            )
             
-            for node in ideas:
-                if 'id' in node and node['id'] == node_id:
-                    # Log the position change
-                    old_x, old_y = node.get('x'), node.get('y')
-                    logger.info(f"Node {node_id} position changing from ({old_x}, {old_y}) to ({new_x}, {new_y})")
-                    
-                    node['x'] = new_x
-                    node['y'] = new_y
-                    node_updated = True
-                    break
-            
-            # If no node was found with the given ID
-            if not node_updated:
-                logger.warning(f"Node with id {node_id} not found for position update")
-                return create_response_message(message, 'failed', f"Node with id {node_id} not found")
-            
-            # Update the store
-            set_ideas(ideas)
-            
-            # Save the updated state
-            save_data(get_store())
-            
-            logger.info(f"Position update successful for node {node_id}")
-            return create_response_message(message, 'completed')
+            if result['success']:
+                logger.info(f"Position update successful for node {node_id}")
+                return create_response_message(message, 'completed')
+            else:
+                logger.warning(f"Position update failed: {result['message']}")
+                return create_response_message(message, 'failed', result['message'])
+                
         except Exception as e:
             logger.error(f"Error updating node position: {str(e)}")
             return create_response_message(message, 'failed', str(e))

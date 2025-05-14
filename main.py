@@ -47,7 +47,7 @@ from src.state import (
     set_ideas, add_idea, set_central, set_current_theme, save_data, load_data
 )
 from src.history import save_state_to_history, can_undo, can_redo, perform_undo, perform_redo
-from src.utils import hex_to_rgb, get_theme, recalc_size, get_edge_color, get_urgency_color, get_tag_color
+from src.utils import hex_to_rgb, get_theme, recalc_size, get_edge_color, get_urgency_color, get_tag_color, collect_descendants, find_node_by_id
 from src.themes import THEMES, TAGS, URGENCY_SIZE
 from src.handlers import handle_message, handle_exception, is_circular
 from src.message_queue import message_queue, MessageQueue, Message
@@ -874,14 +874,10 @@ try:
         node_id = st.session_state.pop('delete_node')
         if node_id in {n['id'] for n in ideas if 'id' in n}:
             save_state_to_history()
-            to_remove = set()
+            
+            # Use the utility function to collect descendants
+            to_remove = collect_descendants(node_id, ideas)
 
-            def collect_descendants(node_id):
-                to_remove.add(node_id)
-                for child in [n for n in ideas if 'id' in n and n.get('parent') == node_id]:
-                    collect_descendants(child['id'])
-
-            collect_descendants(node_id)
             set_ideas([n for n in ideas if 'id' not in n or n['id'] not in to_remove])
             if get_central() in to_remove:
                 set_central(None)
@@ -1752,15 +1748,9 @@ try:
                                         # Save state before deletion
                                         save_state_to_history()
                                         
-                                        # Remove node and its descendants
-                                        to_remove = set()
+                                        # Remove node and its descendants using utility function
+                                        to_remove = collect_descendants(node_id, ideas)
                                         
-                                        def collect_descendants(node_id):
-                                            to_remove.add(node_id)
-                                            for child in [n for n in ideas if 'id' in n and n.get('parent') == node_id]:
-                                                collect_descendants(child['id'])
-                                        
-                                        collect_descendants(node_id)
                                         set_ideas([n for n in ideas if 'id' not in n or n['id'] not in to_remove])
                                         
                                         # Update central node if needed
@@ -1802,106 +1792,30 @@ try:
                         
                         logger.info(f"⭐ POSITION DEBUG: Processing update for node {node_id} to ({x}, {y}) of types (x: {type(x).__name__}, y: {type(y).__name__})")
                         
-                        # Create a message using the direct format, which is now supported by both handlers
-                        from src.message_format import Message
-                        position_message = Message.create('frontend', 'pos', {
-                            'id': node_id,
-                            'x': x,
-                            'y': y
-                        })
-                        
-                        # Try to update the node position directly
+                        # Use the centralized position update service
                         try:
-                            # Get all ideas/nodes
-                            ideas = get_ideas()
-                            updated = False
+                            from src.node_utils import update_node_position_service
+                            from src.history import save_state_to_history
                             
-                            # Log all node IDs for debugging
-                            node_ids = [str(n.get('id')) for n in ideas if 'id' in n]
-                            logger.info(f"✅ Available node IDs: {node_ids}")
+                            result = update_node_position_service(
+                                node_id=node_id, 
+                                x=x, 
+                                y=y, 
+                                get_ideas_func=get_ideas,
+                                set_ideas_func=set_ideas,
+                                save_state_func=save_state_to_history,
+                                save_data_func=save_data,
+                                get_store_func=get_store
+                            )
                             
-                            # Convert node_id to both string and int for comparison
-                            node_id_str = str(node_id)
-                            try:
-                                node_id_int = int(node_id)
-                            except (ValueError, TypeError):
-                                node_id_int = None
-                                logger.warning(f"Could not convert node_id {node_id} to integer")
-                            
-                            # First try direct lookup with the node_id
-                            for node in ideas:
-                                if 'id' in node and (
-                                    node['id'] == node_id or 
-                                    str(node['id']) == node_id_str or 
-                                    (node_id_int is not None and node['id'] == node_id_int)
-                                ):
-                                    # Log before update
-                                    old_x = node.get('x')
-                                    old_y = node.get('y')
-                                    logger.info(f"🔄 POSITION DEBUG: Found node {node['id']}, updating position from ({old_x}, {old_y}) to ({x}, {y})")
-                                    
-                                    # Use proper update function from node_utils
-                                    from src.node_utils import update_node_position
-                                    update_node_position(node, x, y)
-                                    
-                                    updated = True
-                                    logger.info(f"✅ Directly updated node {node_id} position to ({x}, {y})")
-                                    break
-                            
-                            if updated:
-                                # Save state for undo capability
-                                from src.history import save_state_to_history
-                                save_state_to_history()
-                                
-                                # Save the updated data
-                                set_ideas(ideas)
-                                save_data(get_store())
-                                logger.info(f"💾 POSITION UPDATE SUCCESS: Saved position for node {node_id}")
-                                
-                                # Force a rerun to update the UI
+                            if result['success']:
+                                logger.info(f"💾 POSITION UPDATE SUCCESS: {result['message']}")
                                 st.rerun()
                             else:
-                                logger.warning(f"❌ POSITION UPDATE FAILED: Could not find node {node_id} to update position")
-                                
-                                # Try creating a new message to process through standard channels
-                                try:
-                                    from src.handlers import handle_message
-                                    msg_data = {
-                                        'source': 'frontend',
-                                        'action': 'pos',
-                                        'message_id': str(uuid.uuid4()),
-                                        'timestamp': datetime.datetime.now().timestamp() * 1000,
-                                        'payload': {
-                                            'id': node_id,
-                                            'x': x,
-                                            'y': y
-                                        }
-                                    }
-                                    response = handle_message(msg_data)
-                                    logger.info(f"Position update through handler: {response}")
-                                    if response and response.get('status') == 'completed':
-                                        logger.info(f"✅ POSITION UPDATE SUCCESS through message handler")
-                                        st.rerun()
-                                except Exception as e3:
-                                    logger.error(f"Error updating position through standard handler: {str(e3)}")
-                                
+                                logger.warning(f"❌ POSITION UPDATE FAILED: {result['message']}")
                         except Exception as e:
-                            logger.error(f"❌ Error directly updating position: {str(e)}")
+                            logger.error(f"❌ Error updating position: {str(e)}")
                             logger.error(traceback.format_exc())
-                            
-                            # Fallback to using the message queue
-                            try:
-                                logger.info("Trying position update through message queue")
-                                from src.message_queue import message_queue
-                                response = message_queue._handle_position(position_message)
-                                logger.info(f"Position update through message queue: {response.status if hasattr(response, 'status') else 'unknown'}")
-                                
-                                if hasattr(response, 'status') and response.status == 'completed':
-                                    logger.info(f"✅ POSITION UPDATE SUCCESS through message queue")
-                                    st.rerun()
-                            except Exception as e2:
-                                logger.error(f"❌ Error updating position through message queue: {str(e2)}")
-                                logger.error(traceback.format_exc())
                     else:
                         logger.error(f"❌ Invalid position update payload: {payload}")
                 else:

@@ -3,12 +3,12 @@ import streamlit as st
 import logging
 from src.state import get_ideas, get_central, set_central, get_next_id, increment_next_id, add_idea, set_ideas, get_store, save_data
 from src.history import save_state_to_history, perform_undo, perform_redo
-from src.utils import recalc_size
+from src.utils import recalc_size, collect_descendants
 from src.message_format import Message, validate_message, create_response_message
 from typing import Dict, Any, Optional
 import uuid
 from datetime import datetime
-from src.node_utils import update_node_position
+from src.node_utils import update_node_position, update_node_position_service
 import traceback
 
 logger = logging.getLogger(__name__)
@@ -215,10 +215,7 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
             
         elif message.action == 'pos':
             try:
-                save_state_to_history()
-                position_updated = False
-                
-                # Log the full payload for debugging
+                # Log the payload for debugging
                 logger.debug(f"Position update payload in handlers.py: {message.payload}")
                 
                 # Check for direct format (id, x, y)
@@ -227,75 +224,66 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                 new_y = message.payload.get('y')
                 
                 if node_id is not None and new_x is not None and new_y is not None:
-                    # Direct format found, update the node
-                    try:
-                        # Try to convert node_id to integer
-                        try:
-                            node_id = int(node_id)
-                        except (ValueError, TypeError):
-                            # If conversion fails, try string comparison
-                            logger.warning(f"Could not convert node_id '{node_id}' to integer, will try string matching")
+                    # Direct format - use the position service
+                    logger.info(f"Using position service to update node {node_id} to ({new_x}, {new_y})")
+                    
+                    result = update_node_position_service(
+                        node_id=node_id,
+                        x=new_x,
+                        y=new_y,
+                        get_ideas_func=get_ideas,
+                        set_ideas_func=set_ideas,
+                        save_state_func=save_state_to_history,
+                        save_data_func=save_data,
+                        get_store_func=get_store
+                    )
+                    
+                    if result['success']:
+                        logger.info(f"Position update success: {result['message']}")
+                        return create_response_message(message, 'completed')
+                    else:
+                        logger.warning(f"Position update failed: {result['message']}")
+                        return create_response_message(message, 'failed', result['message'])
                         
-                        # Try to find the node by ID (both as int and string)
-                        node = next((n for n in ideas if n['id'] == node_id or str(n['id']) == str(node_id)), None)
-                        
-                        if node:
-                            # Use the utility function to update position
-                            update_node_position(node, new_x, new_y)
-                            position_updated = True
-                            logger.info(f"Updated node {node_id} position using direct format to ({new_x}, {new_y})")
-                        else:
-                            logger.warning(f"Node with ID {node_id} not found for position update")
-                            # List all available node IDs for debugging
-                            node_ids = [n['id'] for n in ideas]
-                            logger.debug(f"Available node IDs: {node_ids}")
-                    except (ValueError, TypeError) as e:
-                        logger.error(f"Invalid node ID or position values: {node_id}, {new_x}, {new_y}. Error: {str(e)}")
                 else:
-                    # Try the object format (key-value pairs)
+                    # Object format - multiple nodes at once
+                    position_updated = False
+                    results = []
+                    
+                    # Check each key in the payload for node IDs
                     for k, v in message.payload.items():
                         # Skip known non-ID keys
                         if k in ('source', 'action', 'timestamp', 'message_id'):
                             continue
                             
-                        try:
-                            # Try to convert key to node ID
-                            try:
-                                node_id = int(k)
-                            except (ValueError, TypeError):
-                                # If conversion fails, try string comparison
-                                node_id = k
-                                logger.debug(f"Using string node ID: {node_id}")
+                        # Check if this is a node position update
+                        if isinstance(v, dict) and 'x' in v and 'y' in v:
+                            logger.info(f"Using position service to update node {k} to ({v['x']}, {v['y']})")
                             
-                            # Find node by ID (both as int and string)
-                            node = next((n for n in ideas if n['id'] == node_id or str(n['id']) == str(node_id)), None)
+                            result = update_node_position_service(
+                                node_id=k,
+                                x=v['x'],
+                                y=v['y'],
+                                get_ideas_func=get_ideas,
+                                set_ideas_func=set_ideas,
+                                save_state_func=save_state_to_history,
+                                save_data_func=save_data,
+                                get_store_func=get_store
+                            )
                             
-                            if node:
-                                # Validate position data
-                                if isinstance(v, dict) and 'x' in v and 'y' in v:
-                                    # Use the utility function to update position
-                                    update_node_position(node, v['x'], v['y'])
-                                    position_updated = True
-                                    logger.info(f"Updated node {node_id} position using object format to ({v['x']}, {v['y']})")
-                                else:
-                                    logger.warning(f"Invalid position data format for node {k}: {v}")
-                            else:
-                                logger.warning(f"Node with ID {node_id} not found for position update")
-                        except (ValueError, TypeError) as e:
-                            logger.error(f"Invalid node ID or position data for key {k}: {v}. Error: {str(e)}")
-                
-                # Save position changes to data file
-                if position_updated:
-                    logger.info("Saving node position changes to data store")
-                    set_ideas(ideas)
-                    save_data(get_store())
-                    return create_response_message(message, 'completed')
-                else:
-                    logger.warning("No positions were updated in message handler")
-                    # List all available nodes for debugging
-                    node_summary = [f"ID: {n.get('id')}, Label: {n.get('label')}" for n in ideas]
-                    logger.debug(f"Available nodes: {node_summary}")
-                    return create_response_message(message, 'failed', "No positions were updated")
+                            results.append(result)
+                            if result['success']:
+                                position_updated = True
+                    
+                    # Return overall status based on results
+                    if position_updated:
+                        logger.info("Successfully updated one or more node positions")
+                        return create_response_message(message, 'completed')
+                    else:
+                        error_messages = [r['message'] for r in results if not r['success']]
+                        logger.warning(f"No positions were updated: {error_messages}")
+                        return create_response_message(message, 'failed', "No positions were updated")
+                        
             except Exception as e:
                 logger.error(f"Error processing position update: {str(e)}")
                 logger.error(traceback.format_exc())
@@ -354,15 +342,9 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                     logger.warning(f"Delete request for nonexistent node: {node_id}")
                     return create_response_message(message, 'failed', 'Node not found')
                     
-                to_remove = set()
-                def collect_descendants(node_id):
-                    to_remove.add(node_id)
-                    children = [n['id'] for n in ideas if n.get('parent') == node_id]
-                    for child_id in children:
-                        if child_id not in to_remove:  # Avoid redundant processing
-                            collect_descendants(child_id)
+                # Use the utility function to collect descendants
+                to_remove = collect_descendants(node_id, ideas)
                 
-                collect_descendants(node_id)
                 set_ideas([n for n in ideas if n['id'] not in to_remove])
                 
                 if get_central() in to_remove:

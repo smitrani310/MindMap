@@ -5,6 +5,7 @@ import functools
 import logging
 import colorsys
 import re
+from typing import Union, List, Dict, Any, Optional, Set, Tuple
 
 # Cache for memoization
 _size_cache = {}
@@ -13,6 +14,130 @@ def clear_size_cache():
     """Clear the size calculation cache"""
     global _size_cache
     _size_cache = {}
+
+def collect_descendants(node_id, ideas, descendants=None):
+    """Recursively collect all descendants of a node.
+    
+    Args:
+        node_id: ID of the starting node
+        ideas: List of all nodes
+        descendants: Optional set to collect descendant IDs (used for recursion)
+        
+    Returns:
+        Set of node IDs including the starting node and all descendants
+    """
+    if descendants is None:
+        descendants = set()
+    
+    descendants.add(node_id)
+    
+    # Find all children of this node
+    children = [n for n in ideas if 'id' in n and n.get('parent') == node_id]
+    
+    # Recursively add descendants
+    for child in children:
+        if child['id'] not in descendants:  # Avoid cycles
+            collect_descendants(child['id'], ideas, descendants)
+    
+    return descendants
+
+def normalize_node_id(node_id: Any) -> int:
+    """Convert any node ID to an integer.
+    
+    Args:
+        node_id: The node ID to normalize (can be string, int, or other)
+        
+    Returns:
+        The node ID as an integer, or None if conversion is not possible
+    """
+    try:
+        return int(node_id)
+    except (ValueError, TypeError):
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Could not convert node_id {node_id} of type {type(node_id).__name__} to integer")
+        return None
+
+def compare_node_ids(id1: Any, id2: Any) -> bool:
+    """Safely compare node IDs of potentially different types.
+    
+    Args:
+        id1: First node ID to compare
+        id2: Second node ID to compare
+        
+    Returns:
+        True if the IDs represent the same node, False otherwise
+    """
+    # Try direct comparison first
+    if id1 == id2:
+        return True
+    
+    # Convert both to strings and compare
+    if str(id1) == str(id2):
+        return True
+    
+    # Try to convert both to integers and compare
+    try:
+        int_id1 = int(id1)
+        int_id2 = int(id2)
+        return int_id1 == int_id2
+    except (ValueError, TypeError):
+        pass
+    
+    # IDs are not equivalent
+    return False
+
+def find_node_by_id(ideas: List[Dict[str, Any]], node_id: Any) -> Optional[Dict[str, Any]]:
+    """Find a node by its ID with flexible type handling.
+    
+    Args:
+        ideas: List of all nodes
+        node_id: ID to search for (can be string, int, etc.)
+        
+    Returns:
+        The node dictionary if found, or None if not found
+    """
+    for node in ideas:
+        if 'id' in node and compare_node_ids(node['id'], node_id):
+            return node
+    return None
+
+def canvas_to_node_coordinates(canvas_x: Union[int, float], canvas_y: Union[int, float], 
+                               canvas_width: Union[int, float], canvas_height: Union[int, float]) -> Tuple[float, float]:
+    """Convert canvas coordinates to node coordinates.
+    
+    Canvas center maps to (0,0) in node coordinates.
+    
+    Args:
+        canvas_x: X coordinate on canvas
+        canvas_y: Y coordinate on canvas
+        canvas_width: Width of the canvas
+        canvas_height: Height of the canvas
+        
+    Returns:
+        Tuple of (node_x, node_y)
+    """
+    node_x = float(canvas_x) - float(canvas_width)/2
+    node_y = float(canvas_y) - float(canvas_height)/2
+    return node_x, node_y
+    
+def node_to_canvas_coordinates(node_x: Union[int, float], node_y: Union[int, float], 
+                               canvas_width: Union[int, float], canvas_height: Union[int, float]) -> Tuple[float, float]:
+    """Convert node coordinates to canvas coordinates.
+    
+    Node position (0,0) maps to canvas center.
+    
+    Args:
+        node_x: X coordinate in node space
+        node_y: Y coordinate in node space
+        canvas_width: Width of the canvas
+        canvas_height: Height of the canvas
+        
+    Returns:
+        Tuple of (canvas_x, canvas_y)
+    """
+    canvas_x = float(node_x) + float(canvas_width)/2
+    canvas_y = float(node_y) + float(canvas_height)/2
+    return canvas_x, canvas_y
 
 def hex_to_rgb(color_str):
     """Convert hex or HSL color to RGB."""
