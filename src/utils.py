@@ -123,6 +123,58 @@ def node_to_canvas_coordinates(node_x: Union[int, float], node_y: Union[int, flo
     canvas_y = float(node_y) + float(canvas_height)/2
     return canvas_x, canvas_y
 
+def find_closest_node(ideas: List[Dict[str, Any]], click_x: Union[int, float], click_y: Union[int, float],
+                      canvas_width: Union[int, float], canvas_height: Union[int, float]) -> Tuple[Optional[Dict[str, Any]], float, float]:
+    """Find the closest node to the given click coordinates.
+    
+    Args:
+        ideas: List of all nodes
+        click_x: X coordinate on the canvas
+        click_y: Y coordinate on the canvas
+        canvas_width: Width of the canvas 
+        canvas_height: Height of the canvas
+        
+    Returns:
+        Tuple of (closest_node, min_distance, click_threshold) where:
+        - closest_node: The node closest to the click coordinates, or None if no nodes found
+        - min_distance: The distance to the closest node
+        - click_threshold: The calculated threshold for considering a click "on" a node
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Find the nearest node
+    closest_node = None
+    min_distance = float('inf')
+    
+    # Filter nodes with valid positions
+    nodes_with_pos = [n for n in ideas if n.get('x') is not None and n.get('y') is not None]
+    
+    for node in nodes_with_pos:
+        # Scale coordinates to match canvas
+        node_x = node.get('x', 0)
+        node_y = node.get('y', 0)
+        
+        node_canvas_x, node_canvas_y = node_to_canvas_coordinates(node_x, node_y, canvas_width, canvas_height)
+        
+        # Calculate Euclidean distance
+        distance = ((node_canvas_x - click_x) ** 2 + (node_canvas_y - click_y) ** 2) ** 0.5
+        
+        logger.debug(f"Node {node.get('id')} distance from click: {distance:.2f}")
+        
+        if distance < min_distance:
+            min_distance = distance
+            closest_node = node
+    
+    # Calculate threshold based on canvas dimensions and node size
+    base_threshold = min(canvas_width, canvas_height) * 0.08  # 8% of the smallest dimension
+    node_size = closest_node.get('size', 20) if closest_node else 20
+    click_threshold = base_threshold + node_size
+    
+    if closest_node:
+        logger.debug(f"Closest node: {closest_node.get('id')} at distance {min_distance:.2f}, threshold: {click_threshold:.2f}")
+    
+    return closest_node, min_distance, click_threshold
+
 def hex_to_rgb(color_str):
     """Convert hex or HSL color to RGB."""
     logger = logging.getLogger(__name__)
@@ -233,4 +285,41 @@ def get_tag_color(tag):
     hex_color = "#{:02x}{:02x}{:02x}".format(int(r*255), int(g*255), int(b*255))
     
     logger.debug(f"Generated hex color for tag '{tag}': {hex_color}")
-    return hex_color 
+    return hex_color
+
+def handle_error(e: Exception, logger: Optional[logging.Logger] = None, 
+                message: Optional[str] = None, log_traceback: bool = True) -> str:
+    """Standardized error handling utility.
+    
+    Provides a consistent way to handle exceptions across the application
+    with proper logging and optional traceback.
+    
+    Args:
+        e: The exception to handle
+        logger: Optional logger instance. If not provided, creates a new one.
+        message: Optional custom message prefix. If not provided, uses a default.
+        log_traceback: Whether to log the full traceback. Default is True.
+        
+    Returns:
+        Error message string suitable for user-facing error messages.
+    """
+    # Get logger if not provided
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    
+    # Format the error message
+    if message:
+        error_msg = f"{message}: {str(e)}"
+    else:
+        error_msg = f"An error occurred: {str(e)}"
+    
+    # Log the error
+    logger.error(error_msg)
+    logger.error(f"Error type: {type(e).__name__}")
+    
+    # Log traceback if requested
+    if log_traceback:
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+    
+    return error_msg 

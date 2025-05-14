@@ -47,7 +47,7 @@ from src.state import (
     set_ideas, add_idea, set_central, set_current_theme, save_data, load_data
 )
 from src.history import save_state_to_history, can_undo, can_redo, perform_undo, perform_redo
-from src.utils import hex_to_rgb, get_theme, recalc_size, get_edge_color, get_urgency_color, get_tag_color, collect_descendants, find_node_by_id
+from src.utils import hex_to_rgb, get_theme, recalc_size, get_edge_color, get_urgency_color, get_tag_color, collect_descendants, find_node_by_id, find_closest_node
 from src.themes import THEMES, TAGS, URGENCY_SIZE
 from src.handlers import handle_message, handle_exception, is_circular
 from src.message_queue import message_queue, MessageQueue, Message
@@ -1687,36 +1687,10 @@ try:
                             canvas_action_successful = False
                             
                             if nodes_with_pos:
-                                # Find the closest node by Euclidean distance
-                                closest_node = None
-                                min_distance = float('inf')
-                                
-                                # Log position of each node for debugging
-                                logger.debug("Node positions:")
-                                for node in nodes_with_pos:
-                                    node_x = node.get('x', 0)
-                                    node_y = node.get('y', 0)
-                                    logger.debug(f"Node {node['id']} ({node.get('label', 'Untitled Node')}): raw position ({node_x}, {node_y})")
-                                    
-                                    # Scale the coordinates to match the canvas
-                                    node_canvas_x = (node_x + canvas_width/2)
-                                    node_canvas_y = (node_y + canvas_height/2)
-                                    
-                                    logger.debug(f"Node {node['id']} canvas position: ({node_canvas_x}, {node_canvas_y})")
-                                    
-                                    # Calculate Euclidean distance
-                                    distance = ((node_canvas_x - click_x) ** 2 + (node_canvas_y - click_y) ** 2) ** 0.5
-                                    
-                                    logger.debug(f"Node {node['id']} distance from click: {distance:.2f}")
-                                    
-                                    if distance < min_distance:
-                                        min_distance = distance
-                                        closest_node = node
-                                
-                                # Use a threshold based on the node size and canvas dimensions
-                                base_threshold = min(canvas_width, canvas_height) * 0.08  # 8% of the smallest dimension
-                                node_size = closest_node.get('size', 20) if closest_node else 20
-                                click_threshold = base_threshold + node_size
+                                # Use utility function to find the closest node
+                                closest_node, min_distance, click_threshold = find_closest_node(
+                                    nodes_with_pos, click_x, click_y, canvas_width, canvas_height
+                                )
                                 
                                 if closest_node:
                                     logger.info(f"Closest node: {closest_node['id']} ({closest_node.get('label', 'Untitled Node')}) at distance {min_distance:.2f}, threshold: {click_threshold:.2f}")

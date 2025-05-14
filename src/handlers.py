@@ -3,7 +3,7 @@ import streamlit as st
 import logging
 from src.state import get_ideas, get_central, set_central, get_next_id, increment_next_id, add_idea, set_ideas, get_store, save_data
 from src.history import save_state_to_history, perform_undo, perform_redo
-from src.utils import recalc_size, collect_descendants, find_node_by_id
+from src.utils import recalc_size, collect_descendants, find_node_by_id, find_closest_node
 from src.message_format import Message, validate_message, create_response_message
 from typing import Dict, Any, Optional
 import uuid
@@ -85,25 +85,10 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                 canvas_width = message.payload.get('canvasWidth', 800)
                 canvas_height = message.payload.get('canvasHeight', 600)
                 
-                # Find the nearest node
-                closest_node = None
-                min_distance = float('inf')
-                
-                for node in ideas:
-                    if node.get('x') is not None and node.get('y') is not None:
-                        # Scale coordinates to match canvas
-                        node_x = (node['x'] + canvas_width/2)
-                        node_y = (node['y'] + canvas_height/2)
-                        
-                        # Calculate distance
-                        distance = ((node_x - click_x) ** 2 + (node_y - click_y) ** 2) ** 0.5
-                        
-                        if distance < min_distance:
-                            min_distance = distance
-                            closest_node = node
-                
-                # Use a threshold based on canvas dimensions
-                click_threshold = min(canvas_width, canvas_height) * 0.08
+                # Use utility function to find the closest node
+                closest_node, min_distance, click_threshold = find_closest_node(
+                    ideas, click_x, click_y, canvas_width, canvas_height
+                )
                 
                 if closest_node and min_distance <= click_threshold:
                     # Select the node
@@ -126,25 +111,10 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                 canvas_width = message.payload.get('canvasWidth', 800)
                 canvas_height = message.payload.get('canvasHeight', 600)
                 
-                # Find the nearest node
-                closest_node = None
-                min_distance = float('inf')
-                
-                for node in ideas:
-                    if node.get('x') is not None and node.get('y') is not None:
-                        # Scale coordinates to match canvas
-                        node_x = (node['x'] + canvas_width/2)
-                        node_y = (node['y'] + canvas_height/2)
-                        
-                        # Calculate distance
-                        distance = ((node_x - click_x) ** 2 + (node_y - click_y) ** 2) ** 0.5
-                        
-                        if distance < min_distance:
-                            min_distance = distance
-                            closest_node = node
-                
-                # Use a threshold based on canvas dimensions
-                click_threshold = min(canvas_width, canvas_height) * 0.08
+                # Use utility function to find the closest node
+                closest_node, min_distance, click_threshold = find_closest_node(
+                    ideas, click_x, click_y, canvas_width, canvas_height
+                )
                 
                 if closest_node and min_distance <= click_threshold:
                     # Open edit modal for the node
@@ -167,25 +137,10 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
                 canvas_width = message.payload.get('canvasWidth', 800)
                 canvas_height = message.payload.get('canvasHeight', 600)
                 
-                # Find the nearest node
-                closest_node = None
-                min_distance = float('inf')
-                
-                for node in ideas:
-                    if node.get('x') is not None and node.get('y') is not None:
-                        # Scale coordinates to match canvas
-                        node_x = (node['x'] + canvas_width/2)
-                        node_y = (node['y'] + canvas_height/2)
-                        
-                        # Calculate distance
-                        distance = ((node_x - click_x) ** 2 + (node_y - click_y) ** 2) ** 0.5
-                        
-                        if distance < min_distance:
-                            min_distance = distance
-                            closest_node = node
-                
-                # Use a threshold based on canvas dimensions
-                click_threshold = min(canvas_width, canvas_height) * 0.08
+                # Use utility function to find the closest node
+                closest_node, min_distance, click_threshold = find_closest_node(
+                    ideas, click_x, click_y, canvas_width, canvas_height
+                )
                 
                 if closest_node and min_distance <= click_threshold:
                     # Delete the node
