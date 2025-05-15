@@ -50,4 +50,39 @@ def get_logger(name=None):
         # Log initialization
         logger.info(f"Logger initialized. Logging to: {log_filename}")
     
-    return logger 
+    return logger
+
+def create_new_log():
+    """Create a new log file and reset the logger.
+    
+    Returns:
+        str: Path to the new log file
+    """
+    # Close existing file handlers
+    for handler in logging.getLogger().handlers[:]:
+        handler.close()
+        logging.getLogger().removeHandler(handler)
+    
+    # Generate a new log filename with timestamp
+    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = os.path.join(logs_dir, f"mindmap_session_{current_time}.log")
+    
+    # Set up new handlers
+    file_handler = logging.FileHandler(log_filename)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.handlers = []  # Remove any existing handlers
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+    
+    # Log initialization
+    root_logger.info(f"Created new log file: {log_filename}")
+    
+    return log_filename 

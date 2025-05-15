@@ -1,4 +1,4 @@
-# Message/event handlers and error handling for MindMap
+"""Message/event handlers and error handling for MindMap"""
 import streamlit as st
 import logging
 from src.state import get_ideas, get_central, set_central, get_next_id, increment_next_id, add_idea, set_ideas, get_store, save_data
@@ -253,7 +253,7 @@ def handle_delete_node(message: Message) -> Dict[str, Any]:
         st.rerun()
         return standard_response(message, True)
     except Exception as e:
-        error_msg = handle_error(e, logger, "Invalid delete request")
+        error_msg = handle_error(e, logger, "Error processing delete node request")
         return standard_response(message, False, error_msg)
 
 def handle_reparent_node(message: Message) -> Dict[str, Any]:
@@ -265,54 +265,64 @@ def handle_reparent_node(message: Message) -> Dict[str, Any]:
         # Validate payload
         is_valid, error_msg, validated_payload = validate_payload(
             message.payload,
-            required_fields=['id', 'parent'],
-            field_types={'id': int, 'parent': int}
+            required_fields=['id', 'parent_id'],
+            field_types={'id': int, 'parent_id': int}
         )
         
         if not is_valid:
             logger.warning(error_msg)
             return standard_response(message, False, error_msg)
+        
+        node_id = validated_payload['id']
+        parent_id = validated_payload['parent_id']
+        
+        # Validate both nodes exist
+        success, node, error_msg = validate_node_exists(node_id, ideas, 'reparent')
+        if not success:
+            return standard_response(message, False, error_msg)
             
-        child_id = validated_payload['id']
-        parent_id = validated_payload['parent']
-        
-        # Validate that both nodes exist
-        child_success, child, child_error = validate_node_exists(child_id, ideas, 'reparent child')
-        if not child_success:
-            logger.warning(child_error)
-            return standard_response(message, False, 'Child node not found')
-        
-        parent_success, parent, parent_error = validate_node_exists(parent_id, ideas, 'reparent parent')
-        if not parent_success:
-            logger.warning(parent_error)
-            return standard_response(message, False, 'Parent node not found')
-        
-        if is_circular(child_id, parent_id, ideas):
-            logger.warning(f"Circular reference detected: {child_id} -> {parent_id}")
-            return standard_response(message, False, 'Cannot create circular parent-child relationships')
+        # For parent_id, None is valid (means making it a root node)
+        if parent_id is not None:
+            success, parent_node, error_msg = validate_node_exists(parent_id, ideas, 'parent')
+            if not success:
+                return standard_response(message, False, error_msg)
             
-        child['parent'] = parent_id
-        if not child.get('edge_type'):
-            child['edge_type'] = 'default'
+            # Check for circular references
+            if is_circular(node_id, parent_id, ideas):
+                logger.warning(f"Attempted circular reference: node {node_id} -> parent {parent_id}")
+                return standard_response(message, False, "Cannot create circular reference")
+        
+        # Update the node's parent
+        node['parent'] = parent_id
+        
+        # Set edge type
+        if 'edge_type' in validated_payload:
+            node['edge_type'] = validated_payload['edge_type']
+        elif parent_id is not None:
+            # Default edge type if not specified
+            if 'edge_type' not in node:
+                node['edge_type'] = 'default'
         
         # Save changes to data file
-        logger.debug(f"Saving after reparenting node {child_id} to parent {parent_id}")
+        logger.debug(f"Saving after reparenting node {node_id} to parent {parent_id}")
         set_ideas(ideas)
         save_data(get_store())
-            
+        
         st.rerun()
         return standard_response(message, True)
     except Exception as e:
-        error_msg = handle_error(e, logger, "Invalid reparent request")
+        error_msg = handle_error(e, logger, "Error processing reparent request")
         return standard_response(message, False, error_msg)
 
 def handle_new_node(message: Message) -> Dict[str, Any]:
-    """Handle new node creation requests."""
+    """Handle node creation requests."""
     try:
-        save_state_to_history()
+        # Get the central node for default parent
         central = get_central()
+        ideas = get_ideas()
+        save_state_to_history()
         
-        # Validate payload
+        # Validate payload with field name compatibility
         is_valid, error_msg, validated_payload = validate_payload(
             message.payload,
             field_types={
