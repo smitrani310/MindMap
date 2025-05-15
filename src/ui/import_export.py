@@ -5,9 +5,8 @@ import json
 import datetime
 import logging
 from src.state import get_ideas, get_store, set_ideas, set_central, get_central, get_next_id, increment_next_id, save_data
-from src.utils import recalc_size, find_node_by_id
+from src.utils import recalc_size, find_node_by_id, handle_exception
 from src.history import save_state_to_history
-from src.handlers import handle_exception
 
 logger = logging.getLogger(__name__)
 

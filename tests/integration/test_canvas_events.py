@@ -2,34 +2,29 @@
 Integration tests for canvas event handling in the Mind Map application.
 
 This module tests the interaction between user events on the canvas and the application's
-message queue system. It verifies that:
+state changes and UI updates. It focuses on:
 - Canvas clicks are properly processed and mapped to nodes
-- Double-clicks trigger appropriate actions
-- Context menu events are handled correctly
-- Coordinate transformations work accurately
-- Node creation and positioning follow the expected rules
-- Message queue processes events in the correct order
-
-The tests use a mock Streamlit environment to simulate the application's
-state management and UI updates.
+- Node selection, editing, deletion via canvas events
+- Distance calculations and threshold detection
 """
 
-import unittest
-import pytest
-import time
 import logging
+import unittest
+from unittest.mock import patch, Mock
+import pytest
+import datetime
 import json
-from datetime import datetime
+import time
 import threading
-from unittest.mock import patch, MagicMock
+from queue import Queue, Empty
 
 # Import app modules
 from src.message_format import Message, create_response_message
 from src.message_queue import message_queue
 from src.state import get_store, get_ideas, set_ideas, get_central, set_central, add_idea
 from src.state import get_next_id, increment_next_id, save_data
-from src.utils import recalc_size
-from src.handlers import handle_message, is_circular
+from src.utils import recalc_size, is_circular
+from src.handlers import handle_message
 
 # Configure logging for tests
 logging.basicConfig(level=logging.DEBUG, 

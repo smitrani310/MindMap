@@ -1,64 +1,82 @@
-"""Message/event handlers and error handling for MindMap"""
-import streamlit as st
-import logging
-from src.state import get_ideas, get_central, set_central, get_next_id, increment_next_id, add_idea, set_ideas, get_store, save_data
-from src.history import save_state_to_history, perform_undo, perform_redo
-from src.utils import recalc_size, collect_descendants, find_node_by_id, find_closest_node, handle_error, validate_node_exists, validate_payload, extract_canvas_coordinates, standard_response
-from src.message_format import Message, validate_message, create_response_message
-from typing import Dict, Any, Optional, Callable, List, Tuple
-import uuid
-from datetime import datetime
-from src.node_utils import update_node_position, update_node_position_service
-from src.canvas_utils import handle_canvas_interaction
-from src.position_utils import handle_position_message
-import traceback
+"""
+Message handlers for the Mind Map application.
 
+This module contains handlers for different message types including:
+- Node addition, updating, and deletion
+- Canvas interactions
+- Position updates
+- Error handling
+"""
+
+from typing import Dict, Any, List, Callable, Optional, Tuple, Set
+import traceback
+import logging
+import streamlit as st
+
+from src.state import get_ideas, get_central, set_central, get_next_id, increment_next_id, add_idea, set_ideas, get_store, save_data
+from src.utils import is_circular, validate_node_exists, validate_payload, extract_canvas_coordinates, standard_response
+from src.ui.canvas import handle_canvas_interaction
+from src.history import save_state_to_history
+from src.node_utils import validate_node, update_node_position_service
+from src.message_format import Message
+
+# Get logger
 logger = logging.getLogger(__name__)
 
-# Registry of message handlers
-_message_handlers = {}
+# Handler registry
+_handlers = {}
 
-def register_handler(action: str, handler_func: Callable):
-    """Register a message handler function for a specific action."""
-    _message_handlers[action] = handler_func
+def register_handler(action: str, handler_func: Callable) -> None:
+    """Register a handler function for a specific action."""
+    _handlers[action] = handler_func
 
-def handle_exception(e):
-    """Handle exceptions with proper logging and user feedback."""
-    error_msg = f"An error occurred: {str(e)}"
-    logger.error(error_msg)
-    logger.error(f"Error details: {type(e).__name__}")
-    st.error(error_msg)
-    st.exception(e)
+def get_handler(action: str) -> Optional[Callable]:
+    """Get the registered handler for an action."""
+    return _handlers.get(action)
 
-def is_circular(child_id, parent_id, nodes):
-    """
-    Check if making parent_id a parent of child_id would create a circular reference.
-    Uses an optimized algorithm to detect cycles.
-    """
-    if child_id == parent_id:
-        return True
-        
-    # Use a more efficient set-based approach for cycle detection
-    visited = set()
-    current_id = parent_id
-    
-    while current_id is not None:
-        if current_id == child_id:
-            return True
+def is_registered_action(action: str) -> bool:
+    """Check if an action has a registered handler."""
+    return action in _handlers
+
+# Node-related handler functions
+
+def handle_add_node(message: Message) -> Dict[str, Any]:
+    """Handle adding a new node."""
+    try:
+        # Validate the node data
+        if not validate_payload(message.payload, required_fields=['label']):
+            return standard_response(message, False, 'Invalid node data: missing required field "label"')
             
-        if current_id in visited:
-            return True
-            
-        visited.add(current_id)
+        # Create new node
+        node_data = {
+            'label': message.payload.get('label', 'New Node'),
+            'description': message.payload.get('description', ''),
+            'tag': message.payload.get('tag', ''),
+            'urgency': message.payload.get('urgency', 'medium'),
+            'edge_type': message.payload.get('edge_type', 'default'),
+            'parent': message.payload.get('parent', get_central()),
+        }
         
-        # Find the parent node
-        parent_node = find_node_by_id(nodes, current_id)
-        if not parent_node:
-            return False
-            
-        current_id = parent_node.get('parent')
+        # Save current state for undo
+        save_state_to_history()
         
-    return False
+        # Add the node
+        add_idea(node_data)
+        
+        # Get the newly created node to return its ID
+        ideas = get_ideas()
+        new_node = ideas[-1] if ideas else None
+        
+        if new_node:
+            return standard_response(message, True, f'Node added successfully with ID: {new_node["id"]}', {'node_id': new_node['id']})
+        else:
+            return standard_response(message, False, 'Error adding node: node not found after addition')
+            
+    except Exception as e:
+        error_msg = f"Error adding node: {str(e)}"
+        logger.error(error_msg)
+        logger.error(traceback.format_exc())
+        return standard_response(message, False, error_msg)
 
 # Canvas-related handler functions
 def handle_canvas_click(message: Message) -> Dict[str, Any]:
@@ -465,8 +483,8 @@ def handle_message(msg_data: Dict[str, Any]) -> Optional[Message]:
         elif action == 'create_node':
             action = 'new_node'
         
-        if action in _message_handlers:
-            return _message_handlers[action](message)
+        if action in _handlers:
+            return _handlers[action](message)
         else:
             logger.warning(f"No handler registered for action: {action}")
             return standard_response(message, False, f"Unknown action type: {action}")

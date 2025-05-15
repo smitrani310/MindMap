@@ -47,9 +47,13 @@ from src.state import (
     set_ideas, add_idea, set_central, set_current_theme, save_data, load_data
 )
 from src.history import save_state_to_history, can_undo, can_redo, perform_undo, perform_redo
-from src.utils import hex_to_rgb, get_theme, recalc_size, get_edge_color, get_urgency_color, get_tag_color, collect_descendants, find_node_by_id, find_closest_node
+from src.utils import (
+    hex_to_rgb, get_theme, recalc_size, get_edge_color, get_urgency_color, 
+    get_tag_color, collect_descendants, find_node_by_id, find_closest_node, is_circular,
+    handle_exception
+)
 from src.themes import THEMES, TAGS, URGENCY_SIZE
-from src.handlers import handle_message, handle_exception, is_circular
+from src.handlers import handle_message
 from src.message_queue import message_queue, MessageQueue, Message
 from src.message_format import Message, validate_message, create_response_message
 from src.logging_setup import get_logger
@@ -67,8 +71,7 @@ from src.ui.node_list import render_node_list, handle_node_list_actions
 from src.ui.node_edit import render_node_edit_modal
 from src.ui.tutorial import render_tutorial_prompt
 from src.ui.node_details import render_node_details
-from src.ui.canvas_toggle import render_canvas_toggle
-from src.ui.network_visualization import render_network_visualization
+from src.ui.canvas import render_canvas
 
 # Configure logging
 import os
@@ -246,12 +249,9 @@ try:
 
     # Render sidebar with settings
     render_sidebar()
-    
-    # Add canvas expansion toggle
-    canvas_height = render_canvas_toggle()
 
-    # Render the network visualization
-    render_network_visualization(canvas_height)
+    # Render canvas (includes toggle and visualization)
+    render_canvas()
 
     # Render search functionality
     render_search()

@@ -1,0 +1,7 @@
+# Deprecated Modules
+
+The following modules have been refactored and their functionality has been moved to other modules.
+These files can be deleted:
+
+1. `src/ui/canvas_toggle.py` - Functionality moved to `src/ui/canvas.py`
+2. `src/canvas_utils.py` - Functionality moved to `src/ui/canvas.py` 

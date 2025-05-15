@@ -2,8 +2,7 @@
 
 import streamlit as st
 from src.state import get_ideas, get_store, save_data
-from src.utils import recalc_size, find_node_by_id, get_theme
-from src.handlers import is_circular
+from src.utils import recalc_size, find_node_by_id, get_theme, is_circular
 from src.history import save_state_to_history
 from src.themes import TAGS
 

@@ -13,4 +13,4 @@ from src.ui.node_list import render_node_list, handle_node_list_actions
 from src.ui.node_edit import render_node_edit_modal
 from src.ui.tutorial import render_tutorial_prompt
 from src.ui.node_details import render_node_details
-from src.ui.canvas_toggle import render_canvas_toggle 
+from src.ui.canvas import render_canvas, render_canvas_toggle 

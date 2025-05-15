@@ -324,6 +324,26 @@ def handle_error(e: Exception, logger: Optional[logging.Logger] = None,
     
     return error_msg 
 
+def handle_exception(e: Exception) -> None:
+    """Display an exception in the Streamlit UI and log it.
+    
+    This function is used for handling exceptions in the UI context
+    where the error needs to be displayed to the user.
+    
+    Args:
+        e: The exception to handle
+    """
+    import traceback
+    logger = logging.getLogger(__name__)
+    
+    # Log the error
+    logger.error(f"Exception: {str(e)}")
+    logger.error(f"Type: {type(e).__name__}")
+    logger.error(f"Traceback: {traceback.format_exc()}")
+    
+    # Display in Streamlit UI
+    st.error(f"Error: {str(e)}")
+
 def validate_node_exists(node_id: Any, ideas: List[Dict[str, Any]], action_name: str = "operation") -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
     """Validate that a node with the given ID exists.
     
@@ -506,3 +526,41 @@ def standard_response(message: Any, success: bool, error_message: Optional[str] 
     
     # For simple success without data
     return create_response_message(message, status) 
+
+def is_circular(child_id, parent_id, nodes):
+    """
+    Check if making parent_id a parent of child_id would create a circular reference.
+    Uses an optimized algorithm to detect cycles.
+    
+    Args:
+        child_id: ID of the child node
+        parent_id: ID of the parent node
+        nodes: List of all nodes
+        
+    Returns:
+        True if a circular reference would be created, False otherwise
+    """
+    if child_id == parent_id:
+        return True
+         
+    # Use a more efficient set-based approach for cycle detection
+    visited = set()
+    current_id = parent_id
+     
+    while current_id is not None:
+        if current_id == child_id:
+            return True
+             
+        if current_id in visited:
+            return True
+             
+        visited.add(current_id)
+         
+        # Find the parent node
+        parent_node = find_node_by_id(nodes, current_id)
+        if not parent_node:
+            return False
+             
+        current_id = parent_node.get('parent')
+         
+    return False 
