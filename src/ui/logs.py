@@ -24,13 +24,13 @@ def render_logs_section():
             st.caption(f"Current: {current_log}")
             
             # Add button to create new log
-            if st.button("Create New Log"):
+            if st.button("Create New Log", key="create_new_log_btn"):
                 new_log = create_new_log()
                 st.success(f"Created new log file: {new_log}")
                 st.rerun()
             
             # Option to view the current log
-            if st.button("View Current Log"):
+            if st.button("View Current Log", key="view_current_log_btn"):
                 try:
                     with open(os.path.join(logs_dir, current_log), 'r') as f:
                         log_content = f.read()
@@ -63,7 +63,7 @@ def render_logs_section():
                 
                 if selected_log:
                     # View selected log
-                    if st.button("View Selected Log"):
+                    if st.button("View Selected Log", key="view_selected_log_btn"):
                         try:
                             with open(os.path.join(logs_dir, selected_log), 'r') as f:
                                 log_content = f.read()

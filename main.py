@@ -63,6 +63,10 @@ from src.ui.undo_redo import render_undo_redo
 from src.ui.shortcuts import render_shortcuts
 from src.ui.logs import render_logs_section
 from src.ui.node_list import render_node_list, handle_node_list_actions
+from src.ui.node_edit import render_node_edit_modal
+from src.ui.tutorial import render_tutorial_prompt
+from src.ui.node_details import render_node_details
+from src.ui.canvas_toggle import render_canvas_toggle
 
 # Configure logging
 import os
@@ -240,177 +244,12 @@ try:
 
     # Render sidebar with settings
     render_sidebar()
-
-    # Render search functionality
-    render_search()
-
-    # Render import/export functionality
-    render_import_export()
-
-    # Add Bubble Form
-    render_add_bubble_form()
-
-    # Undo/Redo buttons
-    render_undo_redo()
-
-    # Keyboard Shortcuts Info
-    render_shortcuts()
-
-    # Logs section
-    render_logs_section()
-
-    # Edit / Center List
-    render_node_list()
-    handle_node_list_actions()
-
-    # Handle button actions from session state
-    if 'center_node' in st.session_state:
-        node_id = st.session_state.pop('center_node')
-        if node_id in {n['id'] for n in get_ideas() if 'id' in n}:
-            set_central(node_id)
-            st.rerun()
-
-    if 'delete_node' in st.session_state:
-        node_id = st.session_state.pop('delete_node')
-        if node_id in {n['id'] for n in get_ideas() if 'id' in n}:
-            save_state_to_history()
-            
-            # Use the utility function to collect descendants
-            to_remove = collect_descendants(node_id, get_ideas())
-
-            set_ideas([n for n in get_ideas() if 'id' not in n or n['id'] not in to_remove])
-            if get_central() in to_remove:
-                set_central(None)
-            if st.session_state.get('selected_node') in to_remove:
-                st.session_state['selected_node'] = None
-            st.rerun()
-
-    # Node Edit Modal
-    if 'edit_node' in st.session_state and st.session_state['edit_node'] is not None:
-        node_id = st.session_state['edit_node']
-        node = find_node_by_id(get_ideas(), node_id)
-
-        if node:
-            with st.form(key=f"edit_node_{node_id}"):
-                st.subheader(f"Edit Node: {node.get('label', 'Untitled Node')}")
-                new_label = st.text_input("Label", value=node.get('label', 'Untitled Node'))
-                new_description = st.text_area("Description", value=node.get('description', ''), height=150)
-                col1, col2 = st.columns(2)
-                new_urgency = col1.selectbox("Urgency",
-                                            list(get_theme()['urgency_colors'].keys()),
-                                            index=list(get_theme()['urgency_colors'].keys()).index(node.get('urgency', 'low')))
-                
-                # Get all tags, including custom ones
-                settings = get_store().get('settings', {})
-                custom_tags = settings.get('custom_tags', [])
-                all_available_tags = [''] + list(TAGS.keys()) + custom_tags
-                
-                # Find the index of the current tag or default to empty
-                current_tag = node.get('tag', '')
-                tag_index = 0
-                if current_tag in all_available_tags:
-                    tag_index = all_available_tags.index(current_tag)
-                
-                new_tag = col2.selectbox("Tag",
-                                        all_available_tags,
-                                        index=tag_index)
-
-                if node['parent'] is not None:
-                    parent_node = find_node_by_id(get_ideas(), node['parent'])
-                    if parent_node:
-                        current_parent = parent_node.get('label', 'Untitled Node')
-                    else:
-                        current_parent = ""
-                    new_parent = st.text_input("Parent label (blank → no parent)", value=current_parent)
-                    new_edge_type = st.selectbox("Connection Type",
-                                                list(get_theme()['edge_colors'].keys()),
-                                                index=list(get_theme()['edge_colors'].keys()).index(node.get('edge_type', 'default')) 
-                                                    if node.get('edge_type', 'default') in get_theme()['edge_colors'] 
-                                                    else 0)
-                else:
-                    new_parent = st.text_input("Parent label (blank → no parent)")
-                    new_edge_type = st.selectbox("Connection Type", list(get_theme()['edge_colors'].keys()))
-
-                # Form buttons - ensure we have submit buttons
-                col1, col2 = st.columns(2)
-                submitted = col1.form_submit_button("Save Changes")
-                cancelled = col2.form_submit_button("Cancel")
-                
-                # Handle form submission logic after the form
-                if submitted:
-                    save_state_to_history()
-                    node['label'] = new_label
-                    node['description'] = new_description
-                    node['urgency'] = new_urgency
-                    node['tag'] = new_tag
-                    recalc_size(node)
-
-                    # Update parent if needed
-                    if new_parent.strip():
-                        new_pid = next((i['id'] for i in get_ideas() if i['label'].strip() == new_parent.strip()), None)
-                        if new_pid is not None and new_pid != node['id']:  # Prevent self-reference
-                            if not is_circular(node['id'], new_pid, get_ideas()):
-                                node['parent'] = new_pid
-                                node['edge_type'] = new_edge_type
-                            else:
-                                st.warning("Cannot create circular parent-child relationships")
-                        elif new_pid == node['id']:
-                            st.warning("Cannot set a node as its own parent.")
-                    else:
-                        node['parent'] = None
-                        node['edge_type'] = 'default'
-
-                    save_data(get_store())
-                    st.session_state['edit_node'] = None
-                    st.rerun()
-
-                if cancelled:
-                    st.session_state['edit_node'] = None
-                    st.rerun()
-
-    # Tutorial Prompt When Empty
-    if not get_ideas():
-        st.info("Your map is empty! Use the Add Bubble form on the left to get started.")
-        with st.expander("Quick Tutorial"):
-            st.markdown("""
-            ### Getting Started with Enhanced Mind Map
-
-            1. **Add your first bubble** using the form on the left sidebar
-            2. **Organize your ideas** by creating parent-child relationships
-            3. **Use tags** to categorize different types of nodes
-            4. **Set urgency levels** to visually prioritize important ideas
-            5. **Add descriptions** to provide more context for each node
-            6. **Customize connection types** to show different relationships
-            7. **Use the theme selector** to change the visual appearance
-
-            **Interactive Features:**
-            - Double-click a node to edit it
-            - Right-click a node to delete it
-            - Drag nodes to reposition them
-            - Drag a node close to another to change its parent
-            - Use undo/redo buttons to reverse changes
-            """)
-        st.stop()
-
-    # Add canvas expansion toggle
-    canvas_expanded = st.session_state.get('canvas_expanded', False)
-    expand_button = st.button("🔍 Expand Canvas" if not canvas_expanded else "🔍 Collapse Canvas")
     
-    if expand_button:
-        # Toggle canvas expansion
-        canvas_expanded = not canvas_expanded
-        # Update both session state and store
-        st.session_state['canvas_expanded'] = canvas_expanded
-        get_store()['settings']['canvas_expanded'] = canvas_expanded
-        save_data(get_store())
-        st.rerun()
-
-    # Set canvas height based on expansion state
-    canvas_height = CANVAS_DIMENSIONS['expanded' if canvas_expanded else 'normal']
+    # Add canvas expansion toggle
+    canvas_height = render_canvas_toggle()
 
     # Build PyVis Network
     theme = get_theme()
-    canvas_height = CANVAS_DIMENSIONS['expanded' if st.session_state.get('canvas_expanded', False) else 'normal']
     
     # Create network with transparent background for seamless integration
     net = Network(
@@ -1007,6 +846,59 @@ try:
         scrolling=False
     )
 
+    # Render search functionality
+    render_search()
+
+    # Render import/export functionality
+    render_import_export()
+
+    # Add Bubble Form
+    render_add_bubble_form()
+
+    # Undo/Redo buttons
+    render_undo_redo()
+
+    # Keyboard Shortcuts Info
+    render_shortcuts()
+
+    # Logs section
+    render_logs_section()
+
+    # Edit / Center List
+    render_node_list()
+    handle_node_list_actions()
+
+    # Handle button actions from session state
+    if 'center_node' in st.session_state:
+        node_id = st.session_state.pop('center_node')
+        if node_id in {n['id'] for n in get_ideas() if 'id' in n}:
+            set_central(node_id)
+            st.rerun()
+
+    if 'delete_node' in st.session_state:
+        node_id = st.session_state.pop('delete_node')
+        if node_id in {n['id'] for n in get_ideas() if 'id' in n}:
+            save_state_to_history()
+            
+            # Use the utility function to collect descendants
+            to_remove = collect_descendants(node_id, get_ideas())
+
+            set_ideas([n for n in get_ideas() if 'id' not in n or n['id'] not in to_remove])
+            if get_central() in to_remove:
+                set_central(None)
+            if st.session_state.get('selected_node') in to_remove:
+                st.session_state['selected_node'] = None
+            st.rerun()
+
+    # Node Edit Modal
+    render_node_edit_modal()
+
+    # Tutorial Prompt When Empty
+    render_tutorial_prompt()
+
+    # Node Details Section
+    render_node_details()
+
     # Process any messages from JavaScript
     action = st.query_params.get('action', None)
     payload_str = st.query_params.get('payload', None)
@@ -1200,78 +1092,6 @@ try:
         except Exception as e:
             logger.error(f"Error processing message: {str(e)}")
             logger.error(traceback.format_exc())
-
-    # Node details section for both central and selected nodes
-    # Use only the central node approach
-    display_node = None
-    
-    if get_central() is not None:
-        central_id = get_central()
-        logger.info(f"Using central node ID: {central_id}")
-        display_node = find_node_by_id(get_ideas(), central_id)
-        logger.info(f"Found node for central ID: {display_node is not None}")
-    
-    # Fallback: If no central node, pick the first node if available
-    if display_node is None and get_ideas():
-        # Find first node with a valid ID
-        display_node = next((n for n in get_ideas() if 'id' in n), None)
-        if display_node:
-            selected_node_temp = display_node['id']
-            logger.info(f"No central node, using fallback node ID: {selected_node_temp}")
-            # Set as central node
-            set_central(selected_node_temp)
-
-    # Debug output for ideas
-    logger.info(f"Total nodes in ideas: {len(get_ideas())}")
-    if not get_ideas():
-        logger.warning("No ideas/nodes found in the store")
-    
-    # Display color mode legend
-    color_mode = get_store().get('settings', {}).get('color_mode', 'urgency')
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        if color_mode == 'urgency':
-            st.write("🎨 **Color Mode:** Urgency-based")
-        else:
-            st.write("🎨 **Color Mode:** Tag-based")
-    with col2:
-        # Quick toggle button
-        if st.button("Toggle Color Mode"):
-            settings = get_store().get('settings', {})
-            new_mode = 'tag' if color_mode == 'urgency' else 'urgency'
-            settings['color_mode'] = new_mode
-            save_data(get_store())
-            st.rerun()
-
-    if display_node:
-        logger.info(f"Displaying node: {display_node['id']} - {display_node.get('label', 'Untitled Node')}")
-        # Display node with a clean style, matching the center button approach
-        st.subheader(f"📌 Selected: {display_node.get('label', 'Untitled Node')}")
-
-        # Display node details
-        if display_node.get('tag'):
-            st.write(f"**Tag:** {display_node['tag']}")
-
-        st.write(f"**Urgency:** {display_node.get('urgency', 'medium')}")
-
-        if display_node.get('description'):
-            st.markdown("**Description:**")
-            st.markdown(display_node['description'])
-        else:
-            st.markdown("**Description:** *No description available*")
-
-        # Display children
-        children = [n for n in get_ideas() if n.get('parent') == display_node['id']]
-        if children:
-            st.markdown("**Connected Ideas:**")
-            for child in children:
-                st.markdown(f"- {child['label']} ({child.get('edge_type', 'default')} connection)")
-        else:
-            st.markdown("**Connected Ideas:** *None*")
-    else:
-        # If we still don't have a node to display, show a message
-        logger.warning("No node available to display")
-        st.warning("No node selected. Click on a node in the canvas to view its details.")
 
     # Add JavaScript to handle postMessage from iframe - using Streamlit's session state
     streamlit_js = """

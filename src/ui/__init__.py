@@ -9,4 +9,8 @@ from src.ui.add_bubble import render_add_bubble_form
 from src.ui.undo_redo import render_undo_redo
 from src.ui.shortcuts import render_shortcuts
 from src.ui.logs import render_logs_section
-from src.ui.node_list import render_node_list, handle_node_list_actions 
+from src.ui.node_list import render_node_list, handle_node_list_actions
+from src.ui.node_edit import render_node_edit_modal
+from src.ui.tutorial import render_tutorial_prompt
+from src.ui.node_details import render_node_details
+from src.ui.canvas_toggle import render_canvas_toggle 
