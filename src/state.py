@@ -49,6 +49,9 @@ def set_ideas(ideas_list):
     # Update the store with validated nodes
     get_store()['ideas'] = validated_ideas
     
+    # Make sure changes are persisted to the data file
+    save_data(get_store())
+
 def add_idea(node):
     """Add an idea to the store."""
     store = get_store()

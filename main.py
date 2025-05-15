@@ -54,6 +54,7 @@ from src.message_queue import message_queue, MessageQueue, Message
 from src.message_format import Message, validate_message, create_response_message
 from src.logging_setup import get_logger
 from src.node_utils import validate_node, update_node_position
+from src.message_handler import process_message_params, process_action
 from src.ui.header import render_header
 from src.ui.sidebar import render_sidebar
 from src.ui.search import render_search
@@ -541,202 +542,27 @@ try:
     render_node_details()
 
     # Process any messages from JavaScript
-    action = st.query_params.get('action', None)
-    payload_str = st.query_params.get('payload', None)
-    
-    # Initialize message debug in session state if not present
-    if 'message_debug' not in st.session_state:
-        st.session_state.message_debug = []
-    
-    # Add current message to debug log immediately if present
-    if action and payload_str:
-        # Get current time for the message
-        current_time = datetime.datetime.now().strftime("%H:%M:%S")
-        
-        # Create the message record
-        new_message = {
-            'action': action,
-            'payload': payload_str,
-            'time': current_time
-        }
-        
-        # Add to the log
-        st.session_state.message_debug.append(new_message)
-        
-        # Limit log size
-        if len(st.session_state.message_debug) > 50:
-            st.session_state.message_debug = st.session_state.message_debug[-50:]
-        
-        # Log to console/file
-        logger.info(f"Received message: action={action}, payload={payload_str}")
-        
-        # Add a prominent notification banner
-        st.success(f"🔔 Message received: **{action}** at {current_time}")
+    action, payload_str, current_time = process_message_params()
+
+    # Process the action if there is one
+    if action:
+        try:
+            # Process the action using the refactored module
+            rerun_needed = process_action(action, payload_str, current_time)
+            
+            # Force a rerun to update the UI if needed
+            if rerun_needed:
+                st.rerun()
+                
+        except Exception as e:
+            logger.error(f"Error processing action: {str(e)}")
+            logger.error(traceback.format_exc())
+            st.error(f"Error processing action: {str(e)}")
 
     # Remove message stats columns
     # Remove communication diagnostics expander
     # Remove debug message log expander
     # Remove the two buttons
-
-    if action:
-        try:
-            # Parse the payload
-            if payload_str:
-                payload = json.loads(payload_str)
-                
-                # Log successful payload parsing
-                logger.debug(f"Payload parsed successfully: {payload}")
-                
-                # Handle different action types
-                if action.startswith('canvas_'):
-                    # Handle canvas coordinate-based messages
-                    logger.info(f"Processing canvas interaction: {action}")
-                    
-                    # For click/dblclick actions, find the nearest node
-                    if action in ['canvas_click', 'canvas_dblclick', 'canvas_contextmenu']:
-                        if 'x' in payload and 'y' in payload:
-                            # Process the coordinates
-                            click_x = payload.get('x', 0)
-                            click_y = payload.get('y', 0)
-                            canvas_width = payload.get('canvasWidth', 800)
-                            canvas_height = payload.get('canvasHeight', 600)
-                            
-                            # Store the coordinates in session state
-                            st.session_state.last_click_coords = {
-                                'x': click_x,
-                                'y': click_y,
-                                'canvasWidth': canvas_width,
-                                'canvasHeight': canvas_height,
-                                'timestamp': payload.get('timestamp', datetime.datetime.now().timestamp() * 1000)
-                            }
-                            
-                            logger.info(f"Canvas {action} at coordinates: ({click_x}, {click_y})")
-                            
-                            # Get all nodes with stored positions
-                            ideas = get_ideas()
-                            nodes_with_pos = [n for n in ideas if n.get('x') is not None and n.get('y') is not None]
-                            
-                            # Debug logging
-                            logger.info(f"Total nodes: {len(ideas)}, Nodes with positions: {len(nodes_with_pos)}")
-                            
-                            canvas_action_successful = False
-                            
-                            if nodes_with_pos:
-                                # Use utility function to find the closest node
-                                closest_node, min_distance, click_threshold = find_closest_node(
-                                    nodes_with_pos, click_x, click_y, canvas_width, canvas_height
-                                )
-                                
-                                if closest_node:
-                                    logger.info(f"Closest node: {closest_node['id']} ({closest_node.get('label', 'Untitled Node')}) at distance {min_distance:.2f}, threshold: {click_threshold:.2f}")
-                                
-                                if closest_node and min_distance < click_threshold:
-                                    node_id = closest_node['id']
-                                    logger.info(f"Node {node_id} is within threshold - processing {action}")
-                                    
-                                    # Handle different actions
-                                    if action == 'canvas_click':
-                                        # Regular click - select and center the node
-                                        st.session_state.selected_node = node_id
-                                        st.session_state.show_node_details = True
-                                        set_central(node_id)
-                                        save_data(get_store())
-                                        logger.info(f"Selected and centered node {node_id}")
-                                        canvas_action_successful = True
-                                    
-                                    elif action == 'canvas_dblclick':
-                                        # Double-click - edit the node
-                                        st.session_state['edit_node'] = node_id
-                                        logger.info(f"Opening edit modal for node {node_id}")
-                                        canvas_action_successful = True
-                                    
-                                    elif action == 'canvas_contextmenu':
-                                        # Right-click - delete the node (and its descendants)
-                                        logger.info(f"Deleting node {node_id}")
-                                        
-                                        # Save state before deletion
-                                        save_state_to_history()
-                                        
-                                        # Remove node and its descendants using utility function
-                                        to_remove = collect_descendants(node_id, get_ideas())
-                                        
-                                        set_ideas([n for n in get_ideas() if 'id' not in n or n['id'] not in to_remove])
-                                        
-                                        # Update central node if needed
-                                        if get_central() in to_remove:
-                                            new_central = next((n['id'] for n in get_ideas() if 'id' not in n or n['id'] not in to_remove), None)
-                                            set_central(new_central)
-                                        
-                                        save_data(get_store())
-                                        logger.info(f"Deleted node {node_id} and {len(to_remove)-1} descendants")
-                                        canvas_action_successful = True
-                                else:
-                                    if closest_node:
-                                        logger.warning(f"No node found near click coordinates (closest: {closest_node.get('label', 'Untitled Node')} at distance: {min_distance:.2f}, threshold: {click_threshold:.2f})")
-                                    else:
-                                        logger.warning(f"No nodes found near click coordinates")
-                            
-                            # Show warning message if action failed
-                            if not canvas_action_successful and action != 'canvas_click':
-                                logger.error(f"Canvas action {action} failed at coordinates ({click_x:.1f}, {click_y:.1f})")
-                    
-                    # Store message info in session state to confirm processing 
-                    st.session_state.last_processed_message = {
-                        'action': action,
-                        'payload': payload,
-                        'time': current_time
-                    }
-                    
-                    # Force a rerun to update the UI after processing
-                    st.rerun()
-                    
-                elif action == 'pos':
-                    # Handle node position update
-                    logger.info(f"💥 POSITION UPDATE MESSAGE RECEIVED: {payload}")
-                    
-                    if 'id' in payload and 'x' in payload and 'y' in payload:
-                        node_id = payload['id']
-                        x = payload['x']
-                        y = payload['y']
-                        
-                        logger.info(f"⭐ POSITION DEBUG: Processing update for node {node_id} to ({x}, {y}) of types (x: {type(x).__name__}, y: {type(y).__name__})")
-                        
-                        # Use the centralized position update service
-                        try:
-                            from src.node_utils import update_node_position_service
-                            from src.history import save_state_to_history
-                            
-                            result = update_node_position_service(
-                                node_id=node_id, 
-                                x=x, 
-                                y=y, 
-                                get_ideas_func=get_ideas,
-                                set_ideas_func=set_ideas,
-                                save_state_func=save_state_to_history,
-                                save_data_func=save_data,
-                                get_store_func=get_store
-                            )
-                            
-                            if result['success']:
-                                logger.info(f"💾 POSITION UPDATE SUCCESS: {result['message']}")
-                                st.rerun()
-                            else:
-                                logger.warning(f"❌ POSITION UPDATE FAILED: {result['message']}")
-                        except Exception as e:
-                            logger.error(f"❌ Error updating position: {str(e)}")
-                            logger.error(traceback.format_exc())
-                    else:
-                        logger.error(f"❌ Invalid position update payload: {payload}")
-                else:
-                    # Handle other action types
-                    logger.info(f"Processing regular action: {action}")
-        except Exception as e:
-            logger.error(f"Error processing message: {str(e)}")
-            logger.error(traceback.format_exc())
-
-    # Add debug API for position tracking
-    # This is now integrated in the position_tracking.js file loaded above
-    # No need for additional JavaScript here
 
 except Exception as e:
     logger.error(f"Unhandled exception: {str(e)}")
