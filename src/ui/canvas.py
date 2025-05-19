@@ -15,7 +15,7 @@ from typing import Dict, Any, Optional, Tuple
 from src.state import get_store, save_data, get_ideas, set_ideas
 from src.history import save_state_to_history
 from src.config import CANVAS_DIMENSIONS
-from src.utils import find_closest_node, extract_canvas_coordinates, standard_response
+from src.utils import find_closest_node, extract_canvas_coordinates, standard_response, handle_error
 from src.ui.network_visualization import render_network_visualization
 
 # Get logger
@@ -130,7 +130,6 @@ def handle_canvas_interaction(
             return standard_response(message, False, error_msg)
             
     except Exception as e:
-        from src.utils import handle_error
         error_msg = handle_error(e, logger, f"Error processing canvas {interaction_type}")
         return standard_response(message, False, error_msg)
 
