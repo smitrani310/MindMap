@@ -472,6 +472,7 @@ class MindMapService:
         """Get all nodes with a specific urgency level."""
         return [node for node in self._current_data.nodes if node.urgency == urgency]
     
+    @timed(operation_name="mindmap_service.get_statistics")
     @cached(cache_name='computation', ttl=60)  # Cache for 1 minute
     def get_statistics(self) -> Dict[str, Any]:
         """Get statistics about the mind map."""
