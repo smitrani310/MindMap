@@ -40,4 +40,32 @@ logs/
 .ipynb_checkpoints
 
 # Local configuration
-.env 
+.env
+
+# Testing and Coverage
+.coverage
+htmlcov/
+coverage.xml
+.pytest_cache/
+.tox/
+
+# Development tools
+.mypy_cache/
+.pre-commit-config.yaml
+
+# Backup files
+backups/
+*.backup
+*.bak
+
+# Performance profiling
+*.prof
+*.lprof
+
+# Documentation build
+site/
+docs/_build/
+
+# New architecture artifacts
+migrations/
+*.migration 

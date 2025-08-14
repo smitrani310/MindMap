@@ -1,3 +1,1 @@
-"""
-Test suite for Mind Map Application
-""" 
+"""Test package for the Enhanced Mind Map application."""

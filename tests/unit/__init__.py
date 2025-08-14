@@ -1,1 +1,1 @@
-"""Test package initialization."""
+"""Unit tests package."""
