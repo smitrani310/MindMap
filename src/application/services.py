@@ -21,6 +21,7 @@ from src.infrastructure.cache import (
     invalidate_node_cache, invalidate_search_cache
 )
 from src.infrastructure.performance import timed, performance_context
+from src.infrastructure.events import EventType, publish_event, create_node_event
 
 
 class ServiceError(Exception):
@@ -180,6 +181,19 @@ class MindMapService:
             # Invalidate caches
             invalidate_search_cache()
             
+            # Publish node created event
+            publish_event(
+                EventType.NODE_CREATED,
+                source="MindMapService",
+                data={
+                    'node_id': node.id,
+                    'label': node.label,
+                    'position': {'x': node.position.x, 'y': node.position.y},
+                    'urgency': node.urgency.value,
+                    'tag': node.tag
+                }
+            )
+            
             self.logger.info(f"Created node {node.id}: {node.label}")
             return Result.ok(node)
             
@@ -260,6 +274,35 @@ class MindMapService:
             invalidate_node_cache(node_id)
             invalidate_search_cache()
             
+            # Determine what fields were updated
+            updated_fields = []
+            if request.label is not None:
+                updated_fields.append('label')
+            if request.description is not None:
+                updated_fields.append('description')
+            if request.position is not None:
+                updated_fields.append('position')
+            if request.urgency is not None:
+                updated_fields.append('urgency')
+            if request.tag is not None:
+                updated_fields.append('tag')
+            if request.parent_id is not None or request.edge_type is not None:
+                updated_fields.append('parent')
+            
+            # Publish node updated event
+            publish_event(
+                EventType.NODE_UPDATED,
+                source="MindMapService",
+                data={
+                    'node_id': node_id,
+                    'updated_fields': updated_fields,
+                    'label': updated_node.label,
+                    'position': {'x': updated_node.position.x, 'y': updated_node.position.y},
+                    'urgency': updated_node.urgency.value,
+                    'tag': updated_node.tag
+                }
+            )
+            
             self.logger.info(f"Updated node {node_id}")
             return Result.ok(updated_node)
             
@@ -306,6 +349,18 @@ class MindMapService:
                 invalidate_node_cache(affected_id)
             invalidate_node_cache(node_id)
             invalidate_search_cache()
+            
+            # Publish node deleted event
+            publish_event(
+                EventType.NODE_DELETED,
+                source="MindMapService",
+                data={
+                    'node_id': node_id,
+                    'deleted_count': len(descendants) + 1,
+                    'label': node.label,
+                    'descendants': descendants
+                }
+            )
             
             self.logger.info(f"Deleted node {node_id} and {len(descendants)} descendants")
             return Result.ok({"deleted_count": len(descendants) + 1})
