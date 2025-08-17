@@ -1,7 +1,7 @@
 """Add Bubble form component for the Enhanced Mind Map application."""
 
 import streamlit as st
-from src.state import get_store, get_ideas, get_central, get_next_id, increment_next_id, add_idea, save_data
+from src.integration.service_adapter import get_service_adapter
 from src.utils import recalc_size, get_theme
 from src.themes import TAGS
 
@@ -17,8 +17,12 @@ def render_add_bubble_form():
         urgency = col1.selectbox("Urgency", list(get_theme()['urgency_colors'].keys()))
         
         # Get all tags, including custom ones
-        settings = get_store().get('settings', {})
-        custom_tags = settings.get('custom_tags', [])
+        adapter = get_service_adapter()
+        if 'store' in st.session_state:
+            settings = st.session_state['store'].get('settings', {})
+            custom_tags = settings.get('custom_tags', [])
+        else:
+            custom_tags = []
         all_available_tags = [''] + list(TAGS.keys()) + custom_tags
         
         # Display the tags dropdown
@@ -28,27 +32,38 @@ def render_add_bubble_form():
         edge_type = st.selectbox("Connection Type", list(get_theme()['edge_colors'].keys()))
 
         if st.form_submit_button("Add") and label:
-            pid = None
-            if parent_label.strip():
-                pid = next((i['id'] for i in get_ideas() if i['label'].strip() == parent_label.strip()), None)
-                if pid is None:
-                    st.warning("Parent not found; adding as top-level")
-            elif get_central() is not None:
-                pid = get_central()
+            try:
+                pid = None
+                if parent_label.strip():
+                    # Search for parent by label using the service adapter
+                    ideas = adapter.get_ideas()
+                    pid = next((i['id'] for i in ideas if i['label'].strip() == parent_label.strip()), None)
+                    if pid is None:
+                        st.warning("Parent not found; adding as top-level")
+                elif adapter.get_central() is not None:
+                    pid = adapter.get_central()
 
-            new_node = {
-                'id': get_next_id(),
-                'label': label.strip(),
-                'description': description,
-                'urgency': urgency,
-                'tag': tag,
-                'parent': pid,
-                'edge_type': edge_type if pid is not None else 'default',
-                'x': None,
-                'y': None
-            }
-            recalc_size(new_node)
-            add_idea(new_node)
-            increment_next_id()
-            save_data(get_store())
-            st.rerun() 
+                new_node = {
+                    'label': label.strip(),
+                    'description': description,
+                    'urgency': urgency,
+                    'tag': tag,
+                    'parent': pid,
+                    'edge_type': edge_type if pid is not None else 'default',
+                    'x': 0,  # Default position, will be updated by layout
+                    'y': 0
+                }
+                
+                # Add the node using the service adapter
+                success = adapter.add_idea(new_node)
+                
+                if success:
+                    st.success(f"Added '{label}' successfully!")
+                    st.rerun()
+                else:
+                    st.error("Failed to add node. Please try again.")
+                    
+            except Exception as e:
+                st.error(f"Error adding node: {str(e)}")
+                import logging
+                logging.getLogger(__name__).error(f"Error in add_bubble_form: {str(e)}") 

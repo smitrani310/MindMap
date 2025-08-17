@@ -13,8 +13,8 @@ from src.domain.models import Node, MindMapData, Position, UrgencyLevel, EdgeTyp
 from src.application.services import MindMapService, NodeCreateRequest, NodeUpdateRequest
 from src.infrastructure.repositories import JsonMindMapRepository, RepositoryFactory
 from src.infrastructure.config import AppConfig, ConfigFactory
-from src.infrastructure.cache import init_cache_manager
-from src.infrastructure.performance import init_performance_monitor
+from src.infrastructure.cache import get_cache_manager
+from src.infrastructure.performance import get_performance_monitor
 from src.application.event_handlers import setup_default_event_handlers
 
 logger = logging.getLogger(__name__)
@@ -37,15 +37,14 @@ class ServiceAdapter:
         self.repository = RepositoryFactory.create_repository(self.config, "json")
         
         # Initialize infrastructure components
-        self.cache_manager = init_cache_manager(self.config)
-        self.performance_monitor = init_performance_monitor()
-        self.performance_monitor.start_monitoring()
+        self.cache_manager = get_cache_manager()
+        self.performance_monitor = get_performance_monitor()
         
         # Set up event system
         setup_default_event_handlers()
         
         # Create service with all integrations
-        self.service = MindMapService(self.repository, self.config, self.cache_manager)
+        self.service = MindMapService(self.repository, self.config)
         
         # Initialize session state compatibility
         self._init_session_state()
