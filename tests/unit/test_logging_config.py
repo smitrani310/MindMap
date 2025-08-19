@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 from pathlib import Path
 
-from src.infrastructure.logging_config import (
+from src.infrastructure.logging import (
     CorrelationIdFilter, JSONFormatter, PerformanceFilter,
     MindMapLoggerAdapter, LoggingConfig,
     setup_logging, get_logger, correlation_context, performance_context,
