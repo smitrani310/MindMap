@@ -6,6 +6,7 @@ import pytest
 import time
 import threading
 from datetime import datetime, timedelta
+from typing import Optional, List
 from unittest.mock import Mock, patch
 
 from src.infrastructure.ui_communication import (
@@ -17,6 +18,23 @@ from src.infrastructure.ui_adapters import (
     CompositeUIAdapter, UIMessageHandler
 )
 from src.infrastructure.event_system import Event, EventType
+
+
+class MockMessageHandler(MessageHandler):
+    """Mock message handler for unit tests."""
+    
+    def __init__(self, channels: Optional[List[CommunicationChannel]] = None):
+        super().__init__(channels)
+        self.handled_messages = []
+        self.should_fail = False
+    
+    def handle(self, message: UIMessage) -> Optional[UIMessage]:
+        """Handle the message and optionally return a response."""
+        if self.should_fail:
+            raise Exception("Handler intentionally failed")
+        
+        self.handled_messages.append(message)
+        return None
 
 
 class TestUIMessage:
@@ -78,10 +96,11 @@ class TestUIMessage:
         assert message.source_component == 'database'
 
 
-class TestMessageHandler(MessageHandler):
+class MockMessageHandler(MessageHandler):
     """Test message handler implementation."""
     
     def __init__(self, channels=None):
+        super().__init__(channels)
         self.channels = channels or [CommunicationChannel.UI_STATE]
         self.handled_messages = []
         self.should_fail = False
@@ -89,11 +108,20 @@ class TestMessageHandler(MessageHandler):
     def can_handle(self, message):
         return message.channel in self.channels
     
-    def handle_message(self, message):
+    def handle(self, message):
+        """Handle the message and optionally return a response."""
         if self.should_fail:
             raise ValueError("Handler configured to fail")
         
         self.handled_messages.append(message)
+        return None
+    
+    def handle_message(self, message):
+        # This method is for compatibility but doesn't add to handled_messages
+        # since handle() already does that
+        if self.should_fail:
+            raise ValueError("Handler configured to fail")
+        
         return True
 
 
@@ -139,7 +167,7 @@ class TestUICommunicationBus:
     
     def test_register_handler(self):
         """Test registering a message handler."""
-        handler = TestMessageHandler()
+        handler = MockMessageHandler()
         
         self.bus.register_handler("test_handler", handler)
         
@@ -148,7 +176,7 @@ class TestUICommunicationBus:
     
     def test_message_processing(self):
         """Test message processing with handlers."""
-        handler = TestMessageHandler([CommunicationChannel.NODE_DATA])
+        handler = MockMessageHandler([CommunicationChannel.NODE_DATA])
         self.bus.register_handler("test_handler", handler)
         
         message = UIMessage(
@@ -168,7 +196,7 @@ class TestUICommunicationBus:
     
     def test_message_retry(self):
         """Test message retry on handler failure."""
-        handler = TestMessageHandler([CommunicationChannel.NODE_DATA])
+        handler = MockMessageHandler([CommunicationChannel.NODE_DATA])
         handler.should_fail = True
         self.bus.register_handler("failing_handler", handler)
         
@@ -259,7 +287,7 @@ class TestUICommunicationBus:
     
     def test_delivery_stats(self):
         """Test delivery statistics."""
-        handler = TestMessageHandler([CommunicationChannel.NODE_DATA])
+        handler = MockMessageHandler([CommunicationChannel.NODE_DATA])
         self.bus.register_handler("test_handler", handler)
         
         # Send successful message
@@ -293,7 +321,21 @@ class TestStreamlitSessionAdapter:
     def setup_method(self):
         """Set up test fixtures."""
         self.adapter = StreamlitSessionAdapter()
+        
+        # Create a mock session that behaves like a dict
         self.mock_session = Mock()
+        self.mock_session.__contains__ = Mock(return_value=False)  # For 'in' operator
+        self.mock_session.ui_messages = []
+        self.mock_session.nodes_updated = False
+        
+        # Make get() method return ui_messages when key is 'ui_messages'
+        def mock_get(key, default=None):
+            if key == 'ui_messages':
+                return self.mock_session.ui_messages
+            return default
+        
+        self.mock_session.get = Mock(side_effect=mock_get)
+        
         self.adapter.set_session_state(self.mock_session)
     
     def test_send_to_ui(self):
@@ -545,11 +587,11 @@ class TestUIMessageHandler:
         )
         
         # Should handle NODE_DATA messages
-        node_message = UIMessage(channel=CommunicationChannel.NODE_DATA)
+        node_message = UIMessage(channel=CommunicationChannel.NODE_DATA, message_type="test")
         assert handler.can_handle(node_message) is True
         
         # Should not handle UI_STATE messages
-        ui_message = UIMessage(channel=CommunicationChannel.UI_STATE)
+        ui_message = UIMessage(channel=CommunicationChannel.UI_STATE, message_type="test")
         assert handler.can_handle(ui_message) is False
         
         # Should not handle when adapter unavailable
@@ -563,7 +605,7 @@ class TestUIMessageHandler:
         
         handler = UIMessageHandler(adapter)
         
-        message = UIMessage(channel=CommunicationChannel.UI_STATE)
+        message = UIMessage(channel=CommunicationChannel.UI_STATE, message_type="test")
         
         result = handler.handle_message(message)
         

@@ -35,6 +35,7 @@ class ErrorCode(Enum):
     DATA_LOAD_ERROR = "DATA_LOAD_ERROR"
     DATA_SAVE_ERROR = "DATA_SAVE_ERROR"
     CACHE_ERROR = "CACHE_ERROR"
+    CACHE_INVALIDATION_FAILED = "CACHE_INVALIDATION_FAILED"
     PERFORMANCE_ERROR = "PERFORMANCE_ERROR"
     PERFORMANCE_DEGRADATION = "PERFORMANCE_DEGRADATION"
     UI_ERROR = "UI_ERROR"
@@ -95,6 +96,7 @@ class MindMapError(Exception):
         self.timestamp = datetime.now()
         self.error_id = str(uuid.uuid4())
         self.recovery_suggestions = recovery_suggestions or []
+        self.stack_trace = traceback.format_exc() if cause else None
         
         # Set error code after category is set
         self.error_code = error_code or self._generate_error_code()

@@ -18,7 +18,7 @@ from src.infrastructure.repositories import MindMapRepository, Result
 from src.infrastructure.config import AppConfig
 from src.infrastructure.cache import (
     get_cache_manager, cached, cache_key_for_node, cache_key_for_search,
-    invalidate_node_cache, invalidate_search_cache
+    invalidate_node_cache, invalidate_search_cache, invalidate_computation_cache
 )
 from src.infrastructure.performance import timed, performance_context
 from src.infrastructure.events import EventType, publish_event, create_node_event
@@ -180,6 +180,7 @@ class MindMapService:
             
             # Invalidate caches
             invalidate_search_cache()
+            invalidate_computation_cache()
             
             # Publish node created event
             publish_event(
@@ -273,6 +274,7 @@ class MindMapService:
             # Invalidate caches
             invalidate_node_cache(node_id)
             invalidate_search_cache()
+            invalidate_computation_cache()
             
             # Determine what fields were updated
             updated_fields = []
@@ -349,6 +351,7 @@ class MindMapService:
                 invalidate_node_cache(affected_id)
             invalidate_node_cache(node_id)
             invalidate_search_cache()
+            invalidate_computation_cache()
             
             # Publish node deleted event
             publish_event(

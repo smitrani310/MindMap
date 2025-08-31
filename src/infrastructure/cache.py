@@ -354,3 +354,10 @@ def invalidate_search_cache() -> None:
     cache_manager = get_cache_manager()
     cache_manager.invalidate_cache('search')
     logger.debug("Invalidated search cache")
+
+
+def invalidate_computation_cache() -> None:
+    """Invalidate computation-related caches."""
+    cache_manager = get_cache_manager()
+    cache_manager.invalidate_cache('computation')
+    logger.debug("Invalidated computation cache")

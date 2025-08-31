@@ -285,6 +285,7 @@ class UIMessageHandler(MessageHandler):
     """Message handler that uses UI adapters."""
     
     def __init__(self, adapter: UIAdapter, channels: Optional[List[CommunicationChannel]] = None):
+        super().__init__(channels)
         self.adapter = adapter
         self.channels = set(channels) if channels else set(CommunicationChannel)
         self.logger = logging.getLogger(__name__)
@@ -294,6 +295,20 @@ class UIMessageHandler(MessageHandler):
     def can_handle(self, message: UIMessage) -> bool:
         """Check if this handler can process the message."""
         return message.channel in self.channels and self.adapter.is_available()
+    
+    def handle(self, message: UIMessage) -> Optional[UIMessage]:
+        """Handle the message using the UI adapter."""
+        try:
+            if self.adapter.send_to_ui(message):
+                self.handled_count += 1
+                return None  # No response message
+            else:
+                self.failed_count += 1
+                return None
+        except Exception as e:
+            self.logger.error(f"Failed to handle message {message.message_id}: {e}")
+            self.failed_count += 1
+            return None
     
     def handle_message(self, message: UIMessage) -> bool:
         """Handle the message using the UI adapter."""
@@ -349,7 +364,7 @@ def send_ui_state_update(component: str, state_data: Dict[str, Any]) -> str:
             'state': state_data
         },
         priority=MessagePriority.NORMAL,
-        target_component=component
+        source_component=component
     )
 
 
