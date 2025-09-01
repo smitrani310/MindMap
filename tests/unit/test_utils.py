@@ -28,6 +28,19 @@ class MockSessionState(dict):
             return self[key]
         return None
 
+class MockComponents:
+    """Mock implementation of streamlit.components.v1."""
+    def __init__(self):
+        pass
+    
+    def html(self, html_string, width=None, height=None, scrolling=False):
+        """Mock HTML component."""
+        return f"<mock-html>{html_string}</mock-html>"
+    
+    def iframe(self, src, width=None, height=None, scrolling=False):
+        """Mock iframe component."""
+        return f"<mock-iframe src='{src}'></mock-iframe>"
+
 class MockStreamlit:
     """Mock implementation of the Streamlit module.
     
@@ -36,6 +49,7 @@ class MockStreamlit:
     """
     def __init__(self):
         self.session_state = MockSessionState()
+        self.components = MockComponents()
         
     def error(self, text):
         """Mock Streamlit's error display."""
@@ -48,6 +62,30 @@ class MockStreamlit:
     def exception(self, e):
         """Mock Streamlit's exception display."""
         print(f"ST EXCEPTION: {e}")
+    
+    def write(self, *args, **kwargs):
+        """Mock Streamlit's write function."""
+        pass
+    
+    def markdown(self, text, **kwargs):
+        """Mock Streamlit's markdown function."""
+        pass
+    
+    def button(self, label, **kwargs):
+        """Mock Streamlit's button function."""
+        return False
+    
+    def selectbox(self, label, options, **kwargs):
+        """Mock Streamlit's selectbox function."""
+        return options[0] if options else None
+    
+    def text_input(self, label, **kwargs):
+        """Mock Streamlit's text_input function."""
+        return ""
+    
+    def sidebar(self):
+        """Mock Streamlit's sidebar."""
+        return self
 
 # Create the mock instance
 mock_st = MockStreamlit()
@@ -167,13 +205,18 @@ def mock_streamlit(monkeypatch):
     """
     # Add the mock to sys.modules
     monkeypatch.setitem(sys.modules, 'streamlit', mock_st)
+    monkeypatch.setitem(sys.modules, 'streamlit.components', mock_st.components)
+    monkeypatch.setitem(sys.modules, 'streamlit.components.v1', mock_st.components)
     
     # Reset session state for each test
     mock_st.session_state = MockSessionState()
     
-    # Patch modules that directly use streamlit
-    from src import handlers
-    monkeypatch.setattr(handlers, 'st', mock_st)
+    # Try to patch modules that directly use streamlit, but handle import errors gracefully
+    try:
+        from src import handlers
+        monkeypatch.setattr(handlers, 'st', mock_st)
+    except ImportError as e:
+        print(f"Warning: Could not import handlers module: {e}")
     
     try:
         from src import state
