@@ -4,9 +4,8 @@ import streamlit as st
 import json
 import datetime
 import logging
-from src.state import get_ideas, get_store, set_ideas, set_central, get_central, get_next_id, increment_next_id, save_data
-from src.utils import recalc_size, find_node_by_id, handle_exception
-from src.history import save_state_to_history
+from src.integration.service_adapter import get_service_adapter
+from src.utils import handle_exception
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +13,8 @@ def render_import_export():
     """
     Render the import/export functionality in the sidebar.
     """
+    adapter = get_service_adapter()
+    
     with st.sidebar.expander("📂 Import / Export"):
         uploaded = st.file_uploader("Import JSON", type="json")
         if uploaded:
@@ -23,83 +24,71 @@ def render_import_export():
                     st.error("JSON must be a list")
                     logger.error(f"Import failed: JSON not a list. Filename: {uploaded.name}")
                 else:
-                    save_state_to_history()  # Save current state before import
+                    # Validate and process the data
+                    validated_data = []
+                    for item in data:
+                        validated_item = validate_node(item)
+                        if validated_item:
+                            validated_data.append(validated_item)
                     
-                    # First pass: validate all nodes and ensure they have IDs
-                    validated_data = [validate_node(item, get_next_id, increment_next_id) for item in data]
-                    
-                    # Second pass: create a label_map with valid nodes
+                    # Handle parent relationships by label
                     label_map = {item.get('label', '').strip().lower(): item.get('id') 
                                 for item in validated_data 
                                 if item.get('label') and item.get('id') is not None}
                     
-                    # Third pass: handle parent relationships
                     for item in validated_data:
                         p = item.get('parent')
                         if isinstance(p, str):
                             item['parent'] = label_map.get(p.strip().lower())
-                        recalc_size(item)
                     
-                    set_ideas(validated_data)
-                    
-                    # Safely calculate next_id by filtering out items without an id
-                    valid_ids = [i.get('id') for i in validated_data if i.get('id') is not None]
-                    get_store()['next_id'] = max(valid_ids, default=-1) + 1
-                    
-                    # Set central node safely
-                    set_central(next((i.get('id') for i in validated_data if i.get('is_central') and i.get('id') is not None), None))
-                    save_data(get_store())
-                    
-                    # Set a flag to reinitialize the message queue after import
-                    st.session_state['reinitialize_message_queue'] = True
-                    logger.info(f"Setting reinitialize_message_queue flag after import of {len(validated_data)} nodes")
-                    
-                    logger.info(f"Successfully imported {len(validated_data)} nodes from {uploaded.name}")
-                    st.success("Imported bubbles from JSON")
+                    # Import using service adapter
+                    if adapter.set_ideas(validated_data):
+                        # Set central node if specified
+                        central_node = next((i for i in validated_data if i.get('is_central')), None)
+                        if central_node and central_node.get('id'):
+                            adapter.set_central(central_node['id'])
+                        
+                        logger.info(f"Successfully imported {len(validated_data)} nodes from {uploaded.name}")
+                        st.success(f"Imported {len(validated_data)} bubbles from JSON")
+                        st.rerun()
+                    else:
+                        st.error("Failed to import data")
+                        
             except Exception as e:
                 handle_exception(e)
                 logger.error(f"Import error: {str(e)}")
 
-        ideas = get_ideas()
+        ideas = adapter.get_ideas()
         if ideas:
-            export = [item.copy() for item in ideas]
+            export = []
+            central_id = adapter.get_central()
             
-            # Log the positions before export
-            position_info = []
-            for item in export:
-                # Use get() method with a default of None to safely access the id
-                item['is_central'] = (item.get('id') == get_central())
+            # Prepare export data
+            for item in ideas:
+                export_item = item.copy()
+                export_item['is_central'] = (item.get('id') == central_id)
                 
-                # Ensure position values are float and show original values for debugging
-                orig_x = item.get('x')
-                orig_y = item.get('y')
-                
-                # Validate position data exists
-                if 'x' not in item or 'y' not in item or item['x'] is None or item['y'] is None:
+                # Ensure position values are properly formatted
+                if 'x' not in export_item or 'y' not in export_item or export_item['x'] is None or export_item['y'] is None:
                     logger.warning(f"Missing position data in export for node {item.get('id')}, initializing to (0,0)")
-                    item['x'] = 0.0
-                    item['y'] = 0.0
+                    export_item['x'] = 0.0
+                    export_item['y'] = 0.0
                 
                 # Convert to float to ensure proper JSON serialization
                 try:
-                    item['x'] = float(item['x'])
-                    item['y'] = float(item['y'])
+                    export_item['x'] = float(export_item['x'])
+                    export_item['y'] = float(export_item['y'])
                 except (ValueError, TypeError):
                     logger.warning(f"Invalid position values in export for node {item.get('id')}, resetting to (0,0)")
-                    item['x'] = 0.0
-                    item['y'] = 0.0
+                    export_item['x'] = 0.0
+                    export_item['y'] = 0.0
                 
-                # Check for changes in value
-                if orig_x != item['x'] or orig_y != item['y']:
-                    logger.warning(f"Position values changed during export: Node {item.get('id')} from ({orig_x}, {orig_y}) to ({item['x']}, {item['y']})")
-                
-                # Track position info for logging
-                position_info.append(f"Node {item.get('id')} ({item.get('label')}): ({item['x']}, {item['y']})")
+                export.append(export_item)
             
             # Log the position data for debugging
             logger.info(f"Exporting {len(export)} nodes with positions:")
-            for pos in position_info:
-                logger.info(f"  {pos}")
+            for item in export:
+                logger.info(f"  Node {item.get('id')} ({item.get('label')}): ({item['x']}, {item['y']})")
                 
             # Create filename with timestamp
             export_filename = f"mindmap_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -120,20 +109,15 @@ def render_import_export():
                 logger.error(f"Error preparing JSON export: {str(e)}")
                 st.error(f"Error exporting JSON: {str(e)}")
 
-def validate_node(item, get_next_id_func, increment_next_id_func):
+def validate_node(item):
     """
     Validate a node and ensure it has all required properties.
     """
     if not isinstance(item, dict):
-        return {}
+        return None
     
     # Create a copy to avoid modifying the original
     node = item.copy()
-    
-    # Ensure node has an ID
-    if 'id' not in node or node['id'] is None:
-        node['id'] = get_next_id_func()
-        increment_next_id_func()
     
     # Set defaults for other properties if missing
     if 'label' not in node or not node['label']:
@@ -151,11 +135,11 @@ def validate_node(item, get_next_id_func, increment_next_id_func):
     if 'edge_type' not in node:
         node['edge_type'] = 'default'
     
-    # Initialize position to None if missing
+    # Initialize position to 0 if missing
     if 'x' not in node or node['x'] is None:
-        node['x'] = None
+        node['x'] = 0.0
     
     if 'y' not in node or node['y'] is None:
-        node['y'] = None
+        node['y'] = 0.0
     
     return node 

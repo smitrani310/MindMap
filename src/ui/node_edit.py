@@ -1,20 +1,19 @@
 """Node Edit Modal component for the Enhanced Mind Map application."""
 
 import streamlit as st
-from src.state import get_ideas, get_store, save_data
-from src.utils import recalc_size, find_node_by_id, get_theme, is_circular
-from src.history import save_state_to_history
+from src.integration.service_adapter import get_service_adapter
+from src.utils import get_theme, is_circular
 from src.themes import TAGS
 
 def render_node_edit_modal():
     """
     Render the node edit modal when a node is selected for editing.
     """
-    ideas = get_ideas()
+    adapter = get_service_adapter()
     
     if 'edit_node' in st.session_state and st.session_state['edit_node'] is not None:
         node_id = st.session_state['edit_node']
-        node = find_node_by_id(get_ideas(), node_id)
+        node = adapter.find_node_by_id(node_id)
 
         if node:
             with st.form(key=f"edit_node_{node_id}"):
@@ -27,8 +26,11 @@ def render_node_edit_modal():
                                             index=list(get_theme()['urgency_colors'].keys()).index(node.get('urgency', 'low')))
                 
                 # Get all tags, including custom ones
-                settings = get_store().get('settings', {})
-                custom_tags = settings.get('custom_tags', [])
+                if 'store' in st.session_state:
+                    settings = st.session_state['store'].get('settings', {})
+                    custom_tags = settings.get('custom_tags', [])
+                else:
+                    custom_tags = []
                 all_available_tags = [''] + list(TAGS.keys()) + custom_tags
                 
                 # Find the index of the current tag or default to empty
@@ -42,7 +44,7 @@ def render_node_edit_modal():
                                         index=tag_index)
 
                 if node['parent'] is not None:
-                    parent_node = find_node_by_id(get_ideas(), node['parent'])
+                    parent_node = adapter.find_node_by_id(node['parent'])
                     if parent_node:
                         current_parent = parent_node.get('label', 'Untitled Node')
                     else:
@@ -64,31 +66,38 @@ def render_node_edit_modal():
                 
                 # Handle form submission logic after the form
                 if submitted:
-                    save_state_to_history()
-                    node['label'] = new_label
-                    node['description'] = new_description
-                    node['urgency'] = new_urgency
-                    node['tag'] = new_tag
-                    recalc_size(node)
+                    # Create update data
+                    update_data = {
+                        'label': new_label,
+                        'description': new_description,
+                        'urgency': new_urgency,
+                        'tag': new_tag
+                    }
 
-                    # Update parent if needed
+                    # Handle parent relationship
                     if new_parent.strip():
-                        new_pid = next((i['id'] for i in get_ideas() if i['label'].strip() == new_parent.strip()), None)
+                        ideas = adapter.get_ideas()
+                        new_pid = next((i['id'] for i in ideas if i['label'].strip() == new_parent.strip()), None)
                         if new_pid is not None and new_pid != node['id']:  # Prevent self-reference
-                            if not is_circular(node['id'], new_pid, get_ideas()):
-                                node['parent'] = new_pid
-                                node['edge_type'] = new_edge_type
+                            if not is_circular(node['id'], new_pid, ideas):
+                                update_data['parent'] = new_pid
+                                update_data['edge_type'] = new_edge_type
                             else:
                                 st.warning("Cannot create circular parent-child relationships")
                         elif new_pid == node['id']:
                             st.warning("Cannot set a node as its own parent.")
                     else:
-                        node['parent'] = None
-                        node['edge_type'] = 'default'
+                        update_data['parent'] = None
+                        update_data['edge_type'] = 'default'
 
-                    save_data(get_store())
-                    st.session_state['edit_node'] = None
-                    st.rerun()
+                    # Update the node using the service adapter
+                    success = adapter.update_node(node['id'], update_data)
+                    if success:
+                        st.success(f"Successfully updated node: {new_label}")
+                        st.session_state['edit_node'] = None
+                        st.rerun()
+                    else:
+                        st.error("Failed to update node. Please try again.")
 
                 if cancelled:
                     st.session_state['edit_node'] = None

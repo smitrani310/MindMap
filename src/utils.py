@@ -201,8 +201,14 @@ def hex_to_rgb(color_str):
 
 def get_theme(theme_name=None):
     """Get theme settings."""
-    from src.state import get_current_theme
-    theme_name = theme_name or get_current_theme()
+    if theme_name is None:
+        try:
+            from src.integration.service_adapter import get_service_adapter
+            adapter = get_service_adapter()
+            settings = adapter.get_settings()
+            theme_name = settings.get('current_theme', 'default')
+        except:
+            theme_name = 'default'
     return THEMES.get(theme_name, THEMES['default'])
 
 def recalc_size(node):
@@ -246,16 +252,19 @@ def get_edge_color(edge_type):
 
 def get_urgency_color(urgency):
     """Get color for urgency level."""
-    from src.state import get_store
-    custom_colors = get_store().get('settings', {}).get('custom_colors', {}).get('urgency', {})
-    if urgency in custom_colors:
-        return custom_colors[urgency]
+    try:
+        from src.integration.service_adapter import get_service_adapter
+        adapter = get_service_adapter()
+        settings = adapter.get_settings()
+        custom_colors = settings.get('custom_colors', {}).get('urgency', {})
+        if urgency in custom_colors:
+            return custom_colors[urgency]
+    except:
+        pass
     return get_theme()['urgency_colors'].get(urgency, '#808080')
 
 def get_tag_color(tag):
     """Get color for tag, including custom tags."""
-    from src.state import get_store
-    
     # Skip processing for empty tags
     if not tag:
         return '#808080'  # Default gray
@@ -263,11 +272,17 @@ def get_tag_color(tag):
     logger = logging.getLogger(__name__)
     
     # Check custom colors first
-    custom_colors = get_store().get('settings', {}).get('custom_colors', {}).get('tags', {})
-    if tag in custom_colors:
-        color = custom_colors[tag]
-        logger.debug(f"Using custom color for tag '{tag}': {color}")
-        return color
+    try:
+        from src.integration.service_adapter import get_service_adapter
+        adapter = get_service_adapter()
+        settings = adapter.get_settings()
+        custom_colors = settings.get('custom_colors', {}).get('tags', {})
+        if tag in custom_colors:
+            color = custom_colors[tag]
+            logger.debug(f"Using custom color for tag '{tag}': {color}")
+            return color
+    except:
+        pass
     
     # Check builtin tags from TAGS dictionary
     if tag in TAGS:

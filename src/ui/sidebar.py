@@ -4,7 +4,7 @@ import streamlit as st
 import colorsys
 from typing import Dict, Any, List
 
-from src.state import get_store, get_current_theme, set_current_theme, save_data
+from src.integration.service_adapter import get_service_adapter
 from src.themes import THEMES, TAGS
 from src.config import DEFAULT_SETTINGS
 
@@ -12,21 +12,32 @@ def render_sidebar():
     """
     Render the sidebar with theme selection and other settings.
     """
+    adapter = get_service_adapter()
+    
     with st.sidebar.expander("Settings", expanded=False):
+        # Get current theme from session state for backward compatibility
+        current_theme = 'default'
+        if 'store' in st.session_state:
+            current_theme = st.session_state['store'].get('current_theme', 'default')
+        
         selected_theme = st.selectbox(
             "Select Theme",
             options=list(THEMES.keys()),
-            index=list(THEMES.keys()).index(get_current_theme())
+            index=list(THEMES.keys()).index(current_theme) if current_theme in THEMES else 0
         )
         
         # Update theme if changed
-        if selected_theme != get_current_theme():
-            set_current_theme(selected_theme)
-            save_data(get_store())
+        if selected_theme != current_theme:
+            theme_settings = {'current_theme': selected_theme}
+            adapter.update_settings(theme_settings)
             st.rerun()
         
         # Get settings with defaults
-        settings = get_store().get('settings', {})
+        if 'store' in st.session_state:
+            settings = st.session_state['store'].get('settings', {})
+        else:
+            settings = {}
+            
         default_edge_length = settings.get('edge_length', DEFAULT_SETTINGS['edge_length'])
         default_spring_strength = settings.get('spring_strength', DEFAULT_SETTINGS['spring_strength'])
         default_size_multiplier = settings.get('size_multiplier', DEFAULT_SETTINGS['size_multiplier'])
@@ -96,9 +107,7 @@ def render_sidebar():
             # Save changes
             settings['custom_tags'] = custom_tags
             settings['custom_colors'] = custom_colors
-            get_store()['settings'] = settings
-            
-            save_data(get_store())
+            adapter.update_settings(settings)
             st.rerun()
             
         # Display custom tags for removal and color editing

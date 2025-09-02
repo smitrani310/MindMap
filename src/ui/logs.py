@@ -2,12 +2,14 @@
 
 import os
 import streamlit as st
+from src.integration.service_adapter import get_service_adapter
 from src.logging_setup import create_new_log
 
 def render_logs_section():
     """
     Render the logs section in the sidebar.
     """
+    adapter = get_service_adapter()
     logs_dir = "logs"
     
     with st.sidebar.expander("📊 Logs"):

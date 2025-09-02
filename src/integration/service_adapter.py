@@ -210,6 +210,178 @@ class ServiceAdapter:
         result = self.service.restore_backup(backup_path)
         return result.is_ok()
     
+    def update_node(self, node_id: int, updates: Dict[str, Any]) -> bool:
+        """Update a node with the given changes."""
+        try:
+            # Convert old format updates to new request format
+            from src.application.services import NodeUpdateRequest
+            from src.domain.models import Position, UrgencyLevel, EdgeType
+            
+            request = NodeUpdateRequest()
+            
+            if 'label' in updates:
+                request.label = updates['label']
+            
+            if 'description' in updates:
+                request.description = updates['description']
+            
+            if 'x' in updates and 'y' in updates:
+                request.position = Position(x=float(updates['x']), y=float(updates['y']))
+            
+            if 'urgency' in updates:
+                try:
+                    request.urgency = UrgencyLevel(updates['urgency'])
+                except ValueError:
+                    pass
+            
+            if 'tag' in updates:
+                request.tag = updates['tag']
+            
+            if 'parent' in updates:
+                request.parent_id = updates['parent']
+            
+            if 'edge_type' in updates:
+                try:
+                    request.edge_type = EdgeType(updates['edge_type'])
+                except ValueError:
+                    pass
+            
+            result = self.service.update_node(node_id, request)
+            
+            if result.is_ok():
+                logger.info(f"Successfully updated node {node_id}")
+                return True
+            else:
+                logger.error(f"Failed to update node {node_id}: {result.error}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error updating node: {str(e)}")
+            return False
+    
+    def bulk_update_nodes(self, updates: List[Dict[str, Any]]) -> bool:
+        """Update multiple nodes with bulk changes."""
+        try:
+            success_count = 0
+            for update in updates:
+                if 'id' in update:
+                    node_id = update['id']
+                    node_updates = {k: v for k, v in update.items() if k != 'id'}
+                    if self.update_node(node_id, node_updates):
+                        success_count += 1
+            
+            logger.info(f"Bulk update completed: {success_count}/{len(updates)} nodes updated")
+            return success_count > 0
+            
+        except Exception as e:
+            logger.error(f"Error in bulk update: {str(e)}")
+            return False
+    
+    def set_ideas(self, ideas_list: List[Dict[str, Any]]) -> bool:
+        """Set all nodes using the old format (used for bulk operations like import)."""
+        try:
+            # Clear existing data first
+            current_ideas = self.get_ideas()
+            for idea in current_ideas:
+                if 'id' in idea:
+                    self.delete_node(idea['id'])
+            
+            # Add nodes in multiple passes to handle parent relationships
+            nodes_by_id = {node['id']: node for node in ideas_list}
+            added_nodes = set()
+            
+            # First pass: Add nodes without parents
+            for node in ideas_list:
+                if node.get('parent') is None:
+                    success = self.add_node(
+                        label=node.get('label', 'Untitled Node'),
+                        description=node.get('description', ''),
+                        urgency=node.get('urgency', 'medium'),
+                        tag=node.get('tag', ''),
+                        parent_id=None,
+                        edge_type=node.get('edge_type', 'default'),
+                        x=node.get('x', 0),
+                        y=node.get('y', 0)
+                    )
+                    if success:
+                        added_nodes.add(node['id'])
+            
+            # Multiple passes for nodes with parents
+            max_passes = 10
+            for pass_num in range(max_passes):
+                added_in_pass = 0
+                
+                for node in ideas_list:
+                    if node['id'] in added_nodes:
+                        continue
+                        
+                    parent_id = node.get('parent')
+                    if parent_id is not None and parent_id in added_nodes:
+                        success = self.add_node(
+                            label=node.get('label', 'Untitled Node'),
+                            description=node.get('description', ''),
+                            urgency=node.get('urgency', 'medium'),
+                            tag=node.get('tag', ''),
+                            parent_id=parent_id,
+                            edge_type=node.get('edge_type', 'default'),
+                            x=node.get('x', 0),
+                            y=node.get('y', 0)
+                        )
+                        if success:
+                            added_nodes.add(node['id'])
+                            added_in_pass += 1
+                
+                if added_in_pass == 0:
+                    break
+            
+            # Final pass: Add remaining nodes without parent relationships
+            for node in ideas_list:
+                if node['id'] not in added_nodes:
+                    logger.warning(f"Adding orphaned node {node['id']} without parent relationship")
+                    success = self.add_node(
+                        label=node.get('label', 'Untitled Node'),
+                        description=node.get('description', ''),
+                        urgency=node.get('urgency', 'medium'),
+                        tag=node.get('tag', ''),
+                        parent_id=None,
+                        edge_type=node.get('edge_type', 'default'),
+                        x=node.get('x', 0),
+                        y=node.get('y', 0)
+                    )
+                    if success:
+                        added_nodes.add(node['id'])
+            
+            logger.info(f"Successfully set {len(added_nodes)} ideas")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error setting ideas: {str(e)}")
+            return False
+    
+    def update_settings(self, settings: Dict[str, Any]) -> bool:
+        """Update application settings."""
+        try:
+            # Update session state settings for backward compatibility
+            if 'store' not in st.session_state:
+                st.session_state['store'] = {}
+            
+            if 'settings' not in st.session_state['store']:
+                st.session_state['store']['settings'] = {}
+            
+            st.session_state['store']['settings'].update(settings)
+            
+            # Save to persistent storage
+            # Note: This would ideally go through a proper settings service
+            from src.state import save_data, get_store
+            save_data(get_store())
+            
+            logger.info(f"Successfully updated settings: {list(settings.keys())}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating settings: {str(e)}")
+            return False
+    
     # === Format Conversion Methods ===
     
     def _node_to_old_format(self, node: Node) -> Dict[str, Any]:

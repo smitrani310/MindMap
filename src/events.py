@@ -12,13 +12,8 @@ import logging
 import datetime
 import traceback
 
-from src.state import (
-    get_store, get_ideas, get_central, 
-    set_ideas, set_central, save_data
-)
-from src.history import save_state_to_history
+from src.integration.service_adapter import get_service_adapter
 from src.utils import find_closest_node, collect_descendants
-from src.node_utils import update_node_position_service
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -58,7 +53,8 @@ def handle_canvas_click(payload, action):
     logger.info(f"Canvas {action} at coordinates: ({click_x}, {click_y})")
     
     # Get all nodes with stored positions
-    ideas = get_ideas()
+    adapter = get_service_adapter()
+    ideas = adapter.get_ideas()
     nodes_with_pos = [n for n in ideas if n.get('x') is not None and n.get('y') is not None]
     
     # Debug logging
@@ -84,8 +80,7 @@ def handle_canvas_click(payload, action):
                 # Regular click - select and center the node
                 st.session_state.selected_node = node_id
                 st.session_state.show_node_details = True
-                set_central(node_id)
-                save_data(get_store())
+                adapter.set_central(node_id)
                 logger.info(f"Selected and centered node {node_id}")
                 canvas_action_successful = True
             
@@ -99,22 +94,14 @@ def handle_canvas_click(payload, action):
                 # Right-click - delete the node (and its descendants)
                 logger.info(f"Deleting node {node_id}")
                 
-                # Save state before deletion
-                save_state_to_history()
-                
-                # Remove node and its descendants using utility function
-                to_remove = collect_descendants(node_id, get_ideas())
-                
-                set_ideas([n for n in get_ideas() if 'id' not in n or n['id'] not in to_remove])
-                
-                # Update central node if needed
-                if get_central() in to_remove:
-                    new_central = next((n['id'] for n in get_ideas() if 'id' in n and n['id'] not in to_remove), None)
-                    set_central(new_central)
-                
-                save_data(get_store())
-                logger.info(f"Deleted node {node_id} and {len(to_remove)-1} descendants")
-                canvas_action_successful = True
+                # Use service adapter to delete node
+                success = adapter.delete_node(node_id)
+                if success:
+                    logger.info(f"Successfully deleted node {node_id}")
+                    canvas_action_successful = True
+                else:
+                    logger.error(f"Failed to delete node {node_id}")
+                    canvas_action_successful = False
         else:
             if closest_node:
                 logger.warning(f"No node found near click coordinates (closest: {closest_node.get('label', 'Untitled Node')} at distance: {min_distance:.2f}, threshold: {click_threshold:.2f})")
@@ -149,24 +136,16 @@ def handle_position_update(payload):
     
     logger.info(f"⭐ POSITION DEBUG: Processing update for node {node_id} to ({x}, {y}) of types (x: {type(x).__name__}, y: {type(y).__name__})")
     
-    # Use the centralized position update service
+    # Use the service adapter to update position
     try:
-        result = update_node_position_service(
-            node_id=node_id, 
-            x=x, 
-            y=y, 
-            get_ideas_func=get_ideas,
-            set_ideas_func=set_ideas,
-            save_state_func=save_state_to_history,
-            save_data_func=save_data,
-            get_store_func=get_store
-        )
+        adapter = get_service_adapter()
+        success = adapter.update_node(node_id, {'x': x, 'y': y})
         
-        if result['success']:
-            logger.info(f"💾 POSITION UPDATE SUCCESS: {result['message']}")
+        if success:
+            logger.info(f"💾 POSITION UPDATE SUCCESS: Updated node {node_id} to ({x}, {y})")
             return True
         else:
-            logger.warning(f"❌ POSITION UPDATE FAILED: {result['message']}")
+            logger.warning(f"❌ POSITION UPDATE FAILED: Could not update node {node_id}")
             return False
     except Exception as e:
         logger.error(f"❌ Error updating position: {str(e)}")

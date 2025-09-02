@@ -2,8 +2,7 @@
 
 import streamlit as st
 import logging
-from src.state import get_central, get_ideas, get_store, set_central, save_data
-from src.utils import find_node_by_id
+from src.integration.service_adapter import get_service_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -11,33 +10,40 @@ def render_node_details():
     """
     Render the node details section for the selected or central node.
     """
+    adapter = get_service_adapter()
+    
     # Node details section for both central and selected nodes
     # Use only the central node approach
     display_node = None
     
-    if get_central() is not None:
-        central_id = get_central()
+    central_id = adapter.get_central()
+    if central_id is not None:
         logger.info(f"Using central node ID: {central_id}")
-        display_node = find_node_by_id(get_ideas(), central_id)
+        display_node = adapter.find_node_by_id(central_id)
         logger.info(f"Found node for central ID: {display_node is not None}")
     
     # Fallback: If no central node, pick the first node if available
-    if display_node is None and get_ideas():
+    ideas = adapter.get_ideas()
+    if display_node is None and ideas:
         # Find first node with a valid ID
-        display_node = next((n for n in get_ideas() if 'id' in n), None)
+        display_node = next((n for n in ideas if 'id' in n), None)
         if display_node:
             selected_node_temp = display_node['id']
             logger.info(f"No central node, using fallback node ID: {selected_node_temp}")
             # Set as central node
-            set_central(selected_node_temp)
+            adapter.set_central(selected_node_temp)
 
     # Debug output for ideas
-    logger.info(f"Total nodes in ideas: {len(get_ideas())}")
-    if not get_ideas():
+    logger.info(f"Total nodes in ideas: {len(ideas)}")
+    if not ideas:
         logger.warning("No ideas/nodes found in the store")
     
     # Display color mode legend
-    color_mode = get_store().get('settings', {}).get('color_mode', 'urgency')
+    if 'store' in st.session_state:
+        color_mode = st.session_state['store'].get('settings', {}).get('color_mode', 'urgency')
+    else:
+        color_mode = 'urgency'
+        
     col1, col2 = st.columns([3, 1])
     with col1:
         if color_mode == 'urgency':
@@ -47,11 +53,13 @@ def render_node_details():
     with col2:
         # Quick toggle button
         if st.button("Toggle Color Mode", key="node_details_toggle_color_mode_btn"):
-            settings = get_store().get('settings', {})
-            new_mode = 'tag' if color_mode == 'urgency' else 'urgency'
-            settings['color_mode'] = new_mode
-            save_data(get_store())
-            st.rerun()
+            if 'store' in st.session_state:
+                settings = st.session_state['store'].get('settings', {})
+                new_mode = 'tag' if color_mode == 'urgency' else 'urgency'
+                settings['color_mode'] = new_mode
+                # Note: This would need proper settings update through service adapter
+                st.info("Color mode toggle needs to be implemented with new architecture")
+                st.rerun()
 
     if display_node:
         logger.info(f"Displaying node: {display_node['id']} - {display_node.get('label', 'Untitled Node')}")
@@ -71,7 +79,7 @@ def render_node_details():
             st.markdown("**Description:** *No description available*")
 
         # Display children
-        children = [n for n in get_ideas() if n.get('parent') == display_node['id']]
+        children = [n for n in ideas if n.get('parent') == display_node['id']]
         if children:
             st.markdown("**Connected Ideas:**")
             for child in children:

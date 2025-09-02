@@ -15,7 +15,7 @@ import logging
 import traceback
 import streamlit as st
 
-from src.state import get_store
+from src.integration.service_adapter import get_service_adapter
 from src.events import handle_canvas_click, handle_position_update
 
 # Get logger
