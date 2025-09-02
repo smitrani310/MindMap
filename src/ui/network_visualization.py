@@ -260,10 +260,17 @@ def enhance_network_html(html_content: str) -> str:
     js_files_content = ""
     for js_file in js_files:
         try:
-            with open(js_file, 'r') as f:
+            with open(js_file, 'r', encoding='utf-8') as f:
                 js_files_content += f.read() + "\n\n"
         except Exception as e:
             logger.error(f"Error loading JS file {js_file}: {str(e)}")
+            # Try with different encoding
+            try:
+                with open(js_file, 'r', encoding='latin-1') as f:
+                    js_files_content += f.read() + "\n\n"
+                logger.info(f"Successfully loaded {js_file} with latin-1 encoding")
+            except Exception as e2:
+                logger.error(f"Failed to load {js_file} with any encoding: {str(e2)}")
     
     direct_js = f"""
     <script>
@@ -322,7 +329,7 @@ def add_javascript_utilities(html_content: str) -> str:
     """
     # Include our custom utils.js file to fix the Streamlit namespace error
     try:
-        with open("src/utils.js", "r") as f:
+        with open("src/utils.js", "r", encoding='utf-8') as f:
             utils_js = f.read()
             utils_js_html = f"""
             <script type="text/javascript">
@@ -345,4 +352,26 @@ def add_javascript_utilities(html_content: str) -> str:
         return html_content + utils_js_html
     except Exception as e:
         logger.error(f"Error loading utils.js: {str(e)}")
-        return html_content 
+        try:
+            with open("src/utils.js", "r", encoding='latin-1') as f:
+                utils_js = f.read()
+                utils_js_html = f"""
+                <script type="text/javascript">
+                // Immediately define Streamlit namespace to prevent errors
+                if (typeof window.Streamlit === 'undefined') {{
+                    window.Streamlit = {{ 
+                        setComponentValue: function() {{ console.log('Streamlit mock: setComponentValue called'); }},
+                        setComponentReady: function() {{ console.log('Streamlit mock: setComponentReady called'); }},
+                        receiveMessageFromPython: function() {{ console.log('Streamlit mock: receiveMessageFromPython called'); }}
+                    }};
+                    console.log('Created Streamlit namespace mock to prevent errors');
+                }}
+                </script>
+                <script type="text/javascript">
+                {utils_js}
+                </script>
+                """
+                return html_content + utils_js_html
+        except Exception as e2:
+            logger.error(f"Failed to load utils.js with any encoding: {str(e2)}")
+            return html_content 

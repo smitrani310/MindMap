@@ -124,20 +124,28 @@ def handle_ui_actions():
     # Handle center node action
     if 'center_node' in st.session_state:
         node_id = st.session_state.pop('center_node')
+        logger.info(f"Attempting to center node {node_id}")
         if adapter.set_central(node_id):
+            logger.info(f"Successfully centered node {node_id}")
+            st.success(f"Centered node {node_id}")
             st.rerun()
         else:
+            logger.error(f"Failed to center node {node_id}")
             st.error(f"Failed to center node {node_id}")
     
     # Handle delete node action
     if 'delete_node' in st.session_state:
         node_id = st.session_state.pop('delete_node')
+        logger.info(f"Attempting to delete node {node_id}")
         if adapter.delete_node(node_id):
+            logger.info(f"Successfully deleted node {node_id}")
             # Clear selected node if it was deleted
             if st.session_state.get('selected_node') == node_id:
                 st.session_state['selected_node'] = None
+            st.success(f"Deleted node {node_id}")
             st.rerun()
         else:
+            logger.error(f"Failed to delete node {node_id}")
             st.error(f"Failed to delete node {node_id}")
 
 

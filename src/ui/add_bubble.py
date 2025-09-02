@@ -43,6 +43,11 @@ def render_add_bubble_form():
                 elif adapter.get_central() is not None:
                     pid = adapter.get_central()
 
+                # Generate random position for new nodes to avoid overlap
+                import random
+                random_x = random.randint(-200, 200)
+                random_y = random.randint(-200, 200)
+                
                 new_node = {
                     'label': label.strip(),
                     'description': description,
@@ -50,14 +55,22 @@ def render_add_bubble_form():
                     'tag': tag,
                     'parent': pid,
                     'edge_type': edge_type if pid is not None else 'default',
-                    'x': 0,  # Default position, will be updated by layout
-                    'y': 0
+                    'x': random_x,  # Random position to avoid overlap
+                    'y': random_y
                 }
                 
                 # Add the node using the service adapter
                 success = adapter.add_idea(new_node)
                 
                 if success:
+                    # If this is the first node and no central node is set, make it central
+                    if adapter.get_central() is None:
+                        ideas = adapter.get_ideas()
+                        if len(ideas) == 1:  # This is the first node
+                            first_node_id = ideas[0]['id']
+                            adapter.set_central(first_node_id)
+                            st.info(f"Set '{label}' as the central node!")
+                    
                     st.success(f"Added '{label}' successfully!")
                     st.rerun()
                 else:

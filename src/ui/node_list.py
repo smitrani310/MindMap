@@ -1,15 +1,14 @@
 """Node List component for the Enhanced Mind Map application."""
 
 import streamlit as st
-from src.state import get_ideas, set_ideas, get_central, set_central, save_data
-from src.history import save_state_to_history
-from src.utils import collect_descendants, find_node_by_id
+from src.integration.service_adapter import get_service_adapter
 
 def render_node_list():
     """
     Render the Node List section with filtering and action buttons for each node.
     """
-    ideas = get_ideas()
+    adapter = get_service_adapter()
+    ideas = adapter.get_ideas()
     if not ideas:
         return
         
@@ -60,43 +59,25 @@ def render_node_list():
             col1.write(label_display)
             
             # Use smaller emoji icons for better alignment with proper classes
-            if col2.button("🎯", key=f"center_{node['id']}", help="Center this node", 
-                          on_click=lambda id=node['id']: st.session_state.update({'center_node': id})):
-                pass
+            if col2.button("🎯", key=f"center_{node['id']}", help="Center this node"):
+                st.session_state['center_node'] = node['id']
+                st.rerun()
             
-            if col3.button("✏️", key=f"edit_{node['id']}", help="Edit this node",
-                          on_click=lambda id=node['id']: st.session_state.update({'edit_node': id})):
-                pass
+            if col3.button("✏️", key=f"edit_{node['id']}", help="Edit this node"):
+                st.session_state['edit_node'] = node['id']
+                st.rerun()
             
-            if col4.button("🗑️", key=f"delete_{node['id']}", help="Delete this node",
-                          on_click=lambda id=node['id']: st.session_state.update({'delete_node': id})):
-                pass
+            if col4.button("🗑️", key=f"delete_{node['id']}", help="Delete this node"):
+                st.session_state['delete_node'] = node['id']
+                st.rerun()
 
 def handle_node_list_actions():
     """
     Handle button actions from the node list (center, edit, delete).
-    """
-    ideas = get_ideas()
     
-    # Handle center node action
-    if 'center_node' in st.session_state:
-        node_id = st.session_state.pop('center_node')
-        if node_id in {n['id'] for n in ideas if 'id' in n}:
-            set_central(node_id)
-            st.rerun()
-
-    # Handle delete node action
-    if 'delete_node' in st.session_state:
-        node_id = st.session_state.pop('delete_node')
-        if node_id in {n['id'] for n in ideas if 'id' in n}:
-            save_state_to_history()
-            
-            # Use the utility function to collect descendants
-            to_remove = collect_descendants(node_id, ideas)
-
-            set_ideas([n for n in ideas if 'id' not in n or n['id'] not in to_remove])
-            if get_central() in to_remove:
-                set_central(None)
-            if st.session_state.get('selected_node') in to_remove:
-                st.session_state['selected_node'] = None
-            st.rerun() 
+    Note: The actual handling is now done in main_new.py using the service adapter.
+    This function is kept for backward compatibility but the logic has been moved.
+    """
+    # The actual handling is now done in main_new.py handle_ui_actions()
+    # using the service adapter for proper architecture integration
+    pass 
