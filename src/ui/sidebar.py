@@ -269,5 +269,4 @@ def render_sidebar():
             settings['size_multiplier'] = size_multiplier
             settings['color_mode'] = new_color_mode
             settings['custom_colors'] = custom_colors
-            get_store()['settings'] = settings
-            save_data(get_store()) 
+            adapter.update_settings(settings) 

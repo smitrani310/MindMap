@@ -327,51 +327,19 @@ def add_javascript_utilities(html_content: str) -> str:
     Returns:
         HTML content with JavaScript utilities
     """
-    # Include our custom utils.js file to fix the Streamlit namespace error
-    try:
-        with open("src/utils.js", "r", encoding='utf-8') as f:
-            utils_js = f.read()
-            utils_js_html = f"""
-            <script type="text/javascript">
-            // Immediately define Streamlit namespace to prevent errors
-            if (typeof window.Streamlit === 'undefined') {{
-                window.Streamlit = {{ 
-                    setComponentValue: function() {{ console.log('Streamlit mock: setComponentValue called'); }},
-                    setComponentReady: function() {{ console.log('Streamlit mock: setComponentReady called'); }},
-                    receiveMessageFromPython: function() {{ console.log('Streamlit mock: receiveMessageFromPython called'); }}
-                }};
-                console.log('Created Streamlit namespace mock to prevent errors');
-            }}
-            </script>
-            <script type="text/javascript">
-            {utils_js}
-            </script>
-            """
-        
-        # Add utils.js to the HTML
-        return html_content + utils_js_html
-    except Exception as e:
-        logger.error(f"Error loading utils.js: {str(e)}")
-        try:
-            with open("src/utils.js", "r", encoding='latin-1') as f:
-                utils_js = f.read()
-                utils_js_html = f"""
-                <script type="text/javascript">
-                // Immediately define Streamlit namespace to prevent errors
-                if (typeof window.Streamlit === 'undefined') {{
-                    window.Streamlit = {{ 
-                        setComponentValue: function() {{ console.log('Streamlit mock: setComponentValue called'); }},
-                        setComponentReady: function() {{ console.log('Streamlit mock: setComponentReady called'); }},
-                        receiveMessageFromPython: function() {{ console.log('Streamlit mock: receiveMessageFromPython called'); }}
-                    }};
-                    console.log('Created Streamlit namespace mock to prevent errors');
-                }}
-                </script>
-                <script type="text/javascript">
-                {utils_js}
-                </script>
-                """
-                return html_content + utils_js_html
-        except Exception as e2:
-            logger.error(f"Failed to load utils.js with any encoding: {str(e2)}")
-            return html_content 
+    # Add minimal JavaScript utilities inline (no external file needed)
+    utils_js_html = """
+    <script type="text/javascript">
+    // Immediately define Streamlit namespace to prevent errors
+    if (typeof window.Streamlit === 'undefined') {
+        window.Streamlit = { 
+            setComponentValue: function() { console.log('Streamlit mock: setComponentValue called'); },
+            setComponentReady: function() { console.log('Streamlit mock: setComponentReady called'); },
+            receiveMessageFromPython: function() { console.log('Streamlit mock: receiveMessageFromPython called'); }
+        };
+        console.log('Created Streamlit namespace mock to prevent errors');
+    }
+    </script>
+    """
+    
+    return html_content + utils_js_html 
