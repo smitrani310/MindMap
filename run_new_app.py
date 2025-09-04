@@ -83,8 +83,7 @@ def run_streamlit_app():
             "-m", "streamlit", "run", 
             "main_new.py",
             "--server.headless", "false",
-            "--server.runOnSave", "true",
-            "--theme.base", "light"
+            "--server.runOnSave", "true"
         ])
     except KeyboardInterrupt:
         print("\nApplication stopped by user")
