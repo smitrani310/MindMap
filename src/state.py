@@ -96,18 +96,20 @@ def save_data(data):
         for node in ideas:
             # Check if node has position data
             if 'x' not in node or 'y' not in node or node['x'] is None or node['y'] is None:
-                logger.warning(f"Node {node.get('id', 'unknown')} missing position data, initializing to (0,0)")
-                node['x'] = 0.0
-                node['y'] = 0.0
+                logger.warning(f"Node {node.get('id', 'unknown')} missing position data, using random position")
+                import random
+                node['x'] = random.uniform(-200, 200)
+                node['y'] = random.uniform(-200, 200)
             
             # Ensure positions are float (not strings or other types)
             try:
                 node['x'] = float(node['x'])
                 node['y'] = float(node['y'])
             except (ValueError, TypeError):
-                logger.warning(f"Invalid position values for node {node.get('id', 'unknown')}, resetting to (0,0)")
-                node['x'] = 0.0
-                node['y'] = 0.0
+                logger.warning(f"Invalid position values for node {node.get('id', 'unknown')}, using random position")
+                import random
+                node['x'] = random.uniform(-200, 200)
+                node['y'] = random.uniform(-200, 200)
         
         # Log position data for debugging
         position_data = {node.get('id'): (node.get('x'), node.get('y')) for node in ideas if 'id' in node}

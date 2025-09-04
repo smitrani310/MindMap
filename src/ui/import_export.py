@@ -145,11 +145,13 @@ def validate_node(item):
     if 'edge_type' not in node:
         node['edge_type'] = 'default'
     
-    # Initialize position to 0 if missing
+    # Initialize position with random values if missing to avoid node overlap
     if 'x' not in node or node['x'] is None:
-        node['x'] = 0.0
+        import random
+        node['x'] = random.uniform(-200, 200)
     
     if 'y' not in node or node['y'] is None:
-        node['y'] = 0.0
+        import random
+        node['y'] = random.uniform(-200, 200)
     
     return node 

@@ -42,8 +42,8 @@ def render_add_bubble_form():
 
                 # Generate random position for new nodes to avoid overlap
                 import random
-                random_x = random.randint(-200, 200)
-                random_y = random.randint(-200, 200)
+                random_x = random.uniform(-300, 300)
+                random_y = random.uniform(-300, 300)
                 
                 new_node = {
                     'label': label.strip(),

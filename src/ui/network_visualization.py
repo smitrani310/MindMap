@@ -179,7 +179,10 @@ def add_nodes_to_network(net: Network, central_id: int, ideas: List[Dict[str, An
             'fixed': {'x': False, 'y': False}
         }
 
-        if n['x'] is not None and n['y'] is not None:
+        # Only set explicit positions if they're not at the default (0,0) 
+        # Let PyVis physics handle positioning for nodes at (0,0)
+        if (n['x'] is not None and n['y'] is not None and 
+            not (n['x'] == 0.0 and n['y'] == 0.0)):
             kwargs.update(x=n['x'], y=n['y'])
 
         net.add_node(n['id'], **kwargs)
