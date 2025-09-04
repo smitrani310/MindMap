@@ -30,8 +30,11 @@ def render_node_details():
         if display_node:
             selected_node_temp = display_node['id']
             logger.info(f"No central node, using fallback node ID: {selected_node_temp}")
-            # Set as central node
-            adapter.set_central(selected_node_temp)
+            # Set as central node using service adapter
+            if adapter.set_central(selected_node_temp):
+                logger.info(f"Successfully set fallback central node: {selected_node_temp}")
+            else:
+                logger.warning(f"Failed to set fallback central node: {selected_node_temp}")
 
     # Debug output for ideas
     logger.info(f"Total nodes in ideas: {len(ideas)}")
@@ -39,10 +42,8 @@ def render_node_details():
         logger.warning("No ideas/nodes found in the store")
     
     # Display color mode legend
-    if 'store' in st.session_state:
-        color_mode = st.session_state['store'].get('settings', {}).get('color_mode', 'urgency')
-    else:
-        color_mode = 'urgency'
+    settings = adapter.get_settings()
+    color_mode = settings.get('color_mode', 'urgency')
         
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -53,13 +54,15 @@ def render_node_details():
     with col2:
         # Quick toggle button
         if st.button("Toggle Color Mode", key="node_details_toggle_color_mode_btn"):
-            if 'store' in st.session_state:
-                settings = st.session_state['store'].get('settings', {})
-                new_mode = 'tag' if color_mode == 'urgency' else 'urgency'
-                settings['color_mode'] = new_mode
-                # Note: This would need proper settings update through service adapter
-                st.info("Color mode toggle needs to be implemented with new architecture")
+            new_mode = 'tag' if color_mode == 'urgency' else 'urgency'
+            updated_settings = settings.copy()
+            updated_settings['color_mode'] = new_mode
+            if adapter.update_settings(updated_settings):
+                logger.info(f"Successfully updated color mode to: {new_mode}")
                 st.rerun()
+            else:
+                logger.error(f"Failed to update color mode to: {new_mode}")
+                st.error("Failed to update color mode")
 
     if display_node:
         logger.info(f"Displaying node: {display_node['id']} - {display_node.get('label', 'Untitled Node')}")

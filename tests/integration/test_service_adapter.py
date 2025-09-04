@@ -366,6 +366,104 @@ class TestServiceAdapter:
         # Test setting non-existent central node
         success = adapter.set_central(999)
         assert not success  # Should fail because node doesn't exist
+    
+    def test_settings_management(self, adapter):
+        """Test getting and updating settings."""
+        # Test getting default settings
+        settings = adapter.get_settings()
+        assert isinstance(settings, dict)
+        assert 'color_mode' in settings
+        
+        # Test updating settings
+        new_settings = {
+            'current_theme': 'dark',
+            'color_mode': 'tag'
+        }
+        success = adapter.update_settings(new_settings)
+        assert success
+        
+        # Verify settings were updated
+        updated_settings = adapter.get_settings()
+        assert updated_settings['current_theme'] == 'dark'
+        assert updated_settings['color_mode'] == 'tag'
+    
+    def test_import_with_parent_relationships(self, adapter):
+        """Test importing data with parent-child relationships."""
+        # Test data with parent relationships
+        import_data = [
+            {
+                'id': 1,
+                'label': 'Root Node',
+                'description': 'This is the root',
+                'parent': None,
+                'urgency': 'high',
+                'tag': 'important',
+                'x': 0,
+                'y': 0
+            },
+            {
+                'id': 2,
+                'label': 'Child Node 1',
+                'description': 'First child',
+                'parent': 1,
+                'urgency': 'medium',
+                'tag': 'work',
+                'x': 100,
+                'y': 100
+            },
+            {
+                'id': 3,
+                'label': 'Child Node 2',
+                'description': 'Second child',
+                'parent': 1,
+                'urgency': 'low',
+                'tag': 'personal',
+                'x': -100,
+                'y': 100
+            },
+            {
+                'id': 4,
+                'label': 'Grandchild',
+                'description': 'Child of child',
+                'parent': 2,
+                'urgency': 'medium',
+                'tag': 'task',
+                'x': 100,
+                'y': 200
+            }
+        ]
+        
+        # Import the data
+        success = adapter.set_ideas(import_data)
+        assert success
+        
+        # Verify all nodes were imported
+        ideas = adapter.get_ideas()
+        assert len(ideas) == 4
+        
+        # Verify parent relationships are maintained
+        # Find nodes by label since IDs will be different
+        nodes_by_label = {node['label']: node for node in ideas}
+        
+        root_node = nodes_by_label['Root Node']
+        child1 = nodes_by_label['Child Node 1']
+        child2 = nodes_by_label['Child Node 2']
+        grandchild = nodes_by_label['Grandchild']
+        
+        # Root should have no parent
+        assert root_node['parent'] is None
+        
+        # Children should have root as parent
+        assert child1['parent'] == root_node['id']
+        assert child2['parent'] == root_node['id']
+        
+        # Grandchild should have child1 as parent
+        assert grandchild['parent'] == child1['id']
+        
+        # Verify other properties were preserved
+        assert root_node['urgency'] == 'high'
+        assert child1['tag'] == 'work'
+        assert grandchild['description'] == 'Child of child'
 
 
 class TestServiceAdapterGlobalFunctions:

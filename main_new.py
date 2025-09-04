@@ -42,22 +42,20 @@ logger = logging.getLogger(__name__)
 
 def initialize_application():
     """Initialize the application with the new architecture."""
+    from src.application.app_lifecycle import get_lifecycle_manager
+    
     try:
-        # Initialize the service adapter
-        adapter = init_service_adapter()
+        # Use the lifecycle manager for initialization
+        manager = get_lifecycle_manager()
+        success = manager.initialize()
         
-        # Set up Streamlit page configuration
-        st.set_page_config(
-            page_title="Enhanced Mind Map v2.0", 
-            layout="wide",
-            initial_sidebar_state="expanded"
-        )
-        
-        # Store adapter in session state for UI components
-        st.session_state['adapter'] = adapter
-        
-        logger.info("Application initialized successfully with new architecture")
-        return adapter
+        if success:
+            logger.info("Application initialized successfully with new architecture")
+            return manager.get_adapter()
+        else:
+            logger.error("Failed to initialize application through lifecycle manager")
+            st.error("Failed to initialize application. Please refresh the page.")
+            return None
         
     except Exception as e:
         logger.error(f"Failed to initialize application: {str(e)}")
@@ -68,85 +66,59 @@ def initialize_application():
 
 def handle_legacy_state_compatibility():
     """Handle compatibility with legacy state management."""
-    adapter = get_service_adapter()
+    from src.application.app_lifecycle import get_lifecycle_manager
     
-    # Provide backward compatibility for components that expect old state structure
-    if 'store' not in st.session_state:
-        st.session_state['store'] = {}
-    
-    # Ensure settings exist in store
-    if 'settings' not in st.session_state['store']:
-        st.session_state['store']['settings'] = {
-            'edge_length': 100,
-            'spring_strength': 0.5,
-            'size_multiplier': 1.0,
-            'canvas_expanded': False,
-            'color_mode': 'urgency',
-            'custom_tags': [],
-            'custom_colors': {
-                'urgency': {
-                    'high': '#FF5252',
-                    'medium': '#FFC107',
-                    'low': '#4CAF50'
-                },
-                'tags': {
-                    'work': '#2196F3',
-                    'personal': '#9C27B0',
-                    'idea': '#00BCD4',
-                    'task': '#FF9800',
-                    'note': '#607D8B',
-                    'important': '#F44336',
-                    'question': '#8BC34A',
-                    'research': '#3F51B5'
-                }
-            }
-        }
-    
-    # Update store with current data for backward compatibility
     try:
-        ideas = adapter.get_ideas()
-        central = adapter.get_central()
-        
-        st.session_state['store'].update({
-            'ideas': ideas,
-            'central': central,
-            'next_id': adapter.get_next_id(),
-        })
+        manager = get_lifecycle_manager()
+        manager.update_legacy_compatibility()
         
     except Exception as e:
         logger.error(f"Error updating legacy state: {str(e)}")
+        # Provide fallback state if lifecycle manager fails
+        if 'store' not in st.session_state:
+            st.session_state['store'] = {
+                'ideas': [],
+                'central': None,
+                'next_id': 1,
+                'settings': {
+                    'edge_length': 100,
+                    'spring_strength': 0.5,
+                    'size_multiplier': 1.0,
+                    'canvas_expanded': False,
+                    'color_mode': 'urgency',
+                    'custom_tags': [],
+                    'custom_colors': {
+                        'urgency': {
+                            'high': '#FF5252',
+                            'medium': '#FFC107',
+                            'low': '#4CAF50'
+                        },
+                        'tags': {
+                            'work': '#2196F3',
+                            'personal': '#9C27B0',
+                            'idea': '#00BCD4',
+                            'task': '#FF9800',
+                            'note': '#607D8B',
+                            'important': '#F44336',
+                            'question': '#8BC34A',
+                            'research': '#3F51B5'
+                        }
+                    }
+                }
+            }
 
 
 def handle_ui_actions():
-    """Handle UI actions using the new service layer."""
-    adapter = get_service_adapter()
+    """Handle UI actions using the lifecycle manager."""
+    from src.application.app_lifecycle import get_lifecycle_manager
     
-    # Handle center node action
-    if 'center_node' in st.session_state:
-        node_id = st.session_state.pop('center_node')
-        logger.info(f"Attempting to center node {node_id}")
-        if adapter.set_central(node_id):
-            logger.info(f"Successfully centered node {node_id}")
-            st.success(f"Centered node {node_id}")
-            st.rerun()
-        else:
-            logger.error(f"Failed to center node {node_id}")
-            st.error(f"Failed to center node {node_id}")
-    
-    # Handle delete node action
-    if 'delete_node' in st.session_state:
-        node_id = st.session_state.pop('delete_node')
-        logger.info(f"Attempting to delete node {node_id}")
-        if adapter.delete_node(node_id):
-            logger.info(f"Successfully deleted node {node_id}")
-            # Clear selected node if it was deleted
-            if st.session_state.get('selected_node') == node_id:
-                st.session_state['selected_node'] = None
-            st.success(f"Deleted node {node_id}")
-            st.rerun()
-        else:
-            logger.error(f"Failed to delete node {node_id}")
-            st.error(f"Failed to delete node {node_id}")
+    try:
+        manager = get_lifecycle_manager()
+        manager.process_ui_actions()
+        
+    except Exception as e:
+        logger.error(f"Error processing UI actions: {str(e)}")
+        st.error("Error processing UI action. Please try again.")
 
 
 def handle_message_processing():
@@ -229,6 +201,8 @@ def render_application():
 
 def display_architecture_info():
     """Display information about the new architecture."""
+    from src.application.app_lifecycle import get_lifecycle_manager
+    
     with st.sidebar:
         with st.expander("🏗️ Architecture v2.0", expanded=False):
             st.markdown("""
@@ -236,24 +210,47 @@ def display_architecture_info():
             - ✅ Layered architecture (Domain, Application, Infrastructure)
             - ✅ Repository pattern for data access
             - ✅ Service layer for business logic
-            - ✅ Comprehensive testing (100 tests)
+            - ✅ Comprehensive testing (114+ tests)
             - ✅ Type safety and validation
             - ✅ Configuration management
             - ✅ Backup and restore functionality
+            - ✅ Application lifecycle management
+            - ✅ Performance monitoring
             
             **Benefits:**
             - Improved maintainability
             - Better error handling
             - Enhanced testability
             - Scalable design
+            - Centralized lifecycle management
             """)
             
-            # Show service statistics
-            adapter = get_service_adapter()
-            stats = adapter.get_statistics()
-            
-            st.markdown("**Current Statistics:**")
-            st.json(stats)
+            # Show comprehensive statistics
+            try:
+                manager = get_lifecycle_manager()
+                stats = manager.get_statistics()
+                
+                st.markdown("**Current Statistics:**")
+                
+                # Display basic stats
+                if 'total_nodes' in stats:
+                    st.metric("Total Nodes", stats['total_nodes'])
+                
+                if 'urgency_distribution' in stats:
+                    st.markdown("**Urgency Distribution:**")
+                    for urgency, count in stats['urgency_distribution'].items():
+                        st.write(f"- {urgency.title()}: {count}")
+                
+                # Display performance stats if available
+                if 'performance' in stats and stats['performance']:
+                    st.markdown("**Performance:**")
+                    perf = stats['performance']
+                    if 'operations_count' in perf:
+                        st.metric("Operations", perf['operations_count'])
+                
+            except Exception as e:
+                logger.error(f"Error displaying statistics: {str(e)}")
+                st.error("Unable to load statistics")
 
 
 def main():

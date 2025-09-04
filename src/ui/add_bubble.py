@@ -18,11 +18,8 @@ def render_add_bubble_form():
         
         # Get all tags, including custom ones
         adapter = get_service_adapter()
-        if 'store' in st.session_state:
-            settings = st.session_state['store'].get('settings', {})
-            custom_tags = settings.get('custom_tags', [])
-        else:
-            custom_tags = []
+        settings = adapter.get_settings()
+        custom_tags = settings.get('custom_tags', [])
         all_available_tags = [''] + list(TAGS.keys()) + custom_tags
         
         # Display the tags dropdown
@@ -68,13 +65,15 @@ def render_add_bubble_form():
                         ideas = adapter.get_ideas()
                         if len(ideas) == 1:  # This is the first node
                             first_node_id = ideas[0]['id']
-                            adapter.set_central(first_node_id)
-                            st.info(f"Set '{label}' as the central node!")
+                            if adapter.set_central(first_node_id):
+                                st.info(f"Set '{label}' as the central node!")
+                            else:
+                                st.warning(f"Added '{label}' but failed to set as central node")
                     
                     st.success(f"Added '{label}' successfully!")
                     st.rerun()
                 else:
-                    st.error("Failed to add node. Please try again.")
+                    st.error("Failed to add node. Please check the input and try again.")
                     
             except Exception as e:
                 st.error(f"Error adding node: {str(e)}")

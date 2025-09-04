@@ -19,7 +19,7 @@ from src.config import (
     DEFAULT_SETTINGS, NETWORK_CONFIG,
     RGBA_ALPHA, PRIMARY_NODE_BORDER
 )
-from src.state import get_store, get_ideas, get_central
+from src.integration.service_adapter import get_service_adapter
 from src.utils import (
     hex_to_rgb, get_theme, recalc_size, 
     get_edge_color, get_urgency_color, get_tag_color
@@ -55,7 +55,7 @@ def render_network_visualization(canvas_height: str) -> None:
         gravity=NETWORK_CONFIG['gravity'],
         central_gravity=NETWORK_CONFIG['central_gravity'],
         spring_length=NETWORK_CONFIG['spring_length'],
-        spring_strength=get_store().get('settings', {}).get('spring_strength', DEFAULT_SETTINGS['spring_strength']),
+        spring_strength=get_service_adapter().get_settings().get('spring_strength', DEFAULT_SETTINGS['spring_strength']),
         damping=NETWORK_CONFIG['damping'],
         overlap=NETWORK_CONFIG['overlap']
     )
@@ -86,28 +86,31 @@ def build_nodes_and_edges(net: Network) -> None:
     Args:
         net: The PyVis Network object
     """
-    # Add nodes and edges to the network
-    id_set = {n['id'] for n in get_ideas() if 'id' in n}
+    # Add nodes and edges to the network using service adapter
+    adapter = get_service_adapter()
+    ideas = adapter.get_ideas()
+    id_set = {n['id'] for n in ideas if 'id' in n}
     
-    # Get central node
-    central_id = get_central()
+    # Get central node from service adapter
+    central_id = adapter.get_central()
     logger.info(f"Creating nodes with central node ID: {central_id}")
     
     # Add all nodes
-    add_nodes_to_network(net, central_id)
+    add_nodes_to_network(net, central_id, ideas)
     
     # Add all edges
-    add_edges_to_network(net, id_set)
+    add_edges_to_network(net, id_set, ideas)
 
-def add_nodes_to_network(net: Network, central_id: int) -> None:
+def add_nodes_to_network(net: Network, central_id: int, ideas: List[Dict[str, Any]]) -> None:
     """
     Add nodes to the network with appropriate styling.
     
     Args:
         net: The PyVis Network object
         central_id: The ID of the central node
+        ideas: List of node data from service adapter
     """
-    for n in get_ideas():
+    for n in ideas:
         # Skip nodes without an id
         if 'id' not in n:
             continue
@@ -115,7 +118,9 @@ def add_nodes_to_network(net: Network, central_id: int) -> None:
         recalc_size(n)
 
         # Get the color mode from settings
-        color_mode = get_store().get('settings', {}).get('color_mode', 'urgency')
+        adapter = get_service_adapter()
+        settings = adapter.get_settings()
+        color_mode = settings.get('color_mode', 'urgency')
         
         # Log node and coloring details
         node_id = n.get('id')
@@ -138,7 +143,9 @@ def add_nodes_to_network(net: Network, central_id: int) -> None:
 
         # Apply the size multiplier to make urgency differences more noticeable
         base_size = n.get('size', 20)  # Default size of 20 if not set
-        size_multiplier = get_store().get('settings', {}).get('size_multiplier', DEFAULT_SETTINGS['size_multiplier'])
+        adapter = get_service_adapter()
+        settings = adapter.get_settings()
+        size_multiplier = settings.get('size_multiplier', DEFAULT_SETTINGS['size_multiplier'])
         if n.get('urgency') == 'high':
             base_size = base_size * size_multiplier
         elif n.get('urgency') == 'low':
@@ -177,15 +184,16 @@ def add_nodes_to_network(net: Network, central_id: int) -> None:
 
         net.add_node(n['id'], **kwargs)
 
-def add_edges_to_network(net: Network, id_set: Set[int]) -> None:
+def add_edges_to_network(net: Network, id_set: Set[int], ideas: List[Dict[str, Any]]) -> None:
     """
     Add edges to the network.
     
     Args:
         net: The PyVis Network object
         id_set: Set of valid node IDs
+        ideas: List of node data from service adapter
     """
-    for n in get_ideas():
+    for n in ideas:
         # Skip nodes without an id
         if 'id' not in n:
             continue
@@ -197,7 +205,9 @@ def add_edges_to_network(net: Network, id_set: Set[int]) -> None:
             if edge_type not in get_theme()['edge_colors']:
                 edge_type = 'default'  # Fallback to default if not in theme
             edge_color = get_edge_color(edge_type)
-            edge_length = get_store().get('settings', {}).get('edge_length', DEFAULT_SETTINGS['edge_length'])
+            adapter = get_service_adapter()
+            settings = adapter.get_settings()
+            edge_length = settings.get('edge_length', DEFAULT_SETTINGS['edge_length'])
             net.add_edge(pid, n['id'], arrows='to', color=edge_color, title=edge_type, length=edge_length)
 
 def enhance_network_html(html_content: str) -> str:
@@ -294,8 +304,10 @@ def add_position_data_to_html(html_content: str) -> str:
         HTML content with position data
     """
     # Get network positions for all nodes
+    adapter = get_service_adapter()
+    ideas = adapter.get_ideas()
     node_positions = {}
-    for n in get_ideas():
+    for n in ideas:
         if 'id' in n and 'x' in n and 'y' in n and n['x'] is not None and n['y'] is not None:
             node_id = n['id']
             x = n['x']

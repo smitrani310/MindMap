@@ -259,6 +259,49 @@ class ServiceAdapter:
             logger.error(f"Error updating node: {str(e)}")
             return False
     
+    def add_node(self, label: str, description: str = "", urgency: str = "medium", 
+                 tag: str = "", x: float = 0, y: float = 0, parent: int = None, 
+                 edge_type: str = "default") -> int:
+        """Add a new node and return its ID."""
+        try:
+            from src.application.services import NodeCreateRequest
+            from src.domain.models import Position, UrgencyLevel, EdgeType
+            
+            # Create the request
+            request = NodeCreateRequest(
+                label=label,
+                position=Position(x=x, y=y),
+                description=description,
+                tag=tag,
+                parent_id=parent
+            )
+            
+            # Set urgency
+            try:
+                request.urgency = UrgencyLevel(urgency)
+            except ValueError:
+                request.urgency = UrgencyLevel.MEDIUM
+            
+            # Set edge type
+            try:
+                request.edge_type = EdgeType(edge_type)
+            except ValueError:
+                request.edge_type = EdgeType.DEFAULT
+            
+            result = self.service.create_node(request)
+            
+            if result.is_ok():
+                node_id = result.data.id
+                logger.info(f"Successfully added node {node_id}: {label}")
+                return node_id
+            else:
+                logger.error(f"Failed to add node: {result.error}")
+                return -1
+                
+        except Exception as e:
+            logger.error(f"Error adding node: {str(e)}")
+            return -1
+
     def bulk_update_nodes(self, updates: List[Dict[str, Any]]) -> bool:
         """Update multiple nodes with bulk changes."""
         try:
@@ -287,23 +330,25 @@ class ServiceAdapter:
                     self.delete_node(idea['id'])
             
             # Add nodes in multiple passes to handle parent relationships
-            nodes_by_id = {node['id']: node for node in ideas_list}
-            added_nodes = set()
+            # Map original IDs to new IDs
+            id_mapping = {}  # old_id -> new_id
+            added_nodes = set()  # Track original IDs that have been processed
             
             # First pass: Add nodes without parents
             for node in ideas_list:
                 if node.get('parent') is None:
-                    success = self.add_node(
+                    new_id = self.add_node(
                         label=node.get('label', 'Untitled Node'),
                         description=node.get('description', ''),
                         urgency=node.get('urgency', 'medium'),
                         tag=node.get('tag', ''),
-                        parent_id=None,
+                        parent=None,
                         edge_type=node.get('edge_type', 'default'),
                         x=node.get('x', 0),
                         y=node.get('y', 0)
                     )
-                    if success:
+                    if new_id > 0:  # Success
+                        id_mapping[node['id']] = new_id
                         added_nodes.add(node['id'])
             
             # Multiple passes for nodes with parents
@@ -316,18 +361,21 @@ class ServiceAdapter:
                         continue
                         
                     parent_id = node.get('parent')
-                    if parent_id is not None and parent_id in added_nodes:
-                        success = self.add_node(
+                    if parent_id is not None and parent_id in id_mapping:
+                        # Use the new ID for the parent
+                        new_parent_id = id_mapping[parent_id]
+                        new_id = self.add_node(
                             label=node.get('label', 'Untitled Node'),
                             description=node.get('description', ''),
                             urgency=node.get('urgency', 'medium'),
                             tag=node.get('tag', ''),
-                            parent_id=parent_id,
+                            parent=new_parent_id,
                             edge_type=node.get('edge_type', 'default'),
                             x=node.get('x', 0),
                             y=node.get('y', 0)
                         )
-                        if success:
+                        if new_id > 0:  # Success
+                            id_mapping[node['id']] = new_id
                             added_nodes.add(node['id'])
                             added_in_pass += 1
                 
@@ -338,17 +386,18 @@ class ServiceAdapter:
             for node in ideas_list:
                 if node['id'] not in added_nodes:
                     logger.warning(f"Adding orphaned node {node['id']} without parent relationship")
-                    success = self.add_node(
+                    new_id = self.add_node(
                         label=node.get('label', 'Untitled Node'),
                         description=node.get('description', ''),
                         urgency=node.get('urgency', 'medium'),
                         tag=node.get('tag', ''),
-                        parent_id=None,
+                        parent=None,
                         edge_type=node.get('edge_type', 'default'),
                         x=node.get('x', 0),
                         y=node.get('y', 0)
                     )
-                    if success:
+                    if new_id > 0:  # Success
+                        id_mapping[node['id']] = new_id
                         added_nodes.add(node['id'])
             
             logger.info(f"Successfully set {len(added_nodes)} ideas")
@@ -357,6 +406,32 @@ class ServiceAdapter:
         except Exception as e:
             logger.error(f"Error setting ideas: {str(e)}")
             return False
+    
+    def get_settings(self) -> Dict[str, Any]:
+        """Get current application settings."""
+        try:
+            # Get settings from session state for backward compatibility
+            if 'store' in st.session_state and 'settings' in st.session_state['store']:
+                return st.session_state['store']['settings']
+            
+            # Return default settings if none exist
+            return {
+                'current_theme': 'default',
+                'color_mode': 'urgency',
+                'edge_length': 100,
+                'spring_strength': 0.5,
+                'size_multiplier': 1.0
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting settings: {str(e)}")
+            return {
+                'current_theme': 'default',
+                'color_mode': 'urgency',
+                'edge_length': 100,
+                'spring_strength': 0.5,
+                'size_multiplier': 1.0
+            }
     
     def update_settings(self, settings: Dict[str, Any]) -> bool:
         """Update application settings."""

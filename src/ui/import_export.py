@@ -16,8 +16,8 @@ def render_import_export():
     adapter = get_service_adapter()
     
     with st.sidebar.expander("📂 Import / Export"):
-        uploaded = st.file_uploader("Import JSON", type="json")
-        if uploaded:
+        uploaded = st.file_uploader("Import JSON", type="json", key="json_file_uploader")
+        if uploaded and uploaded.name not in st.session_state.get('processed_files', set()):
             try:
                 data = json.load(uploaded)
                 if not isinstance(data, list):
@@ -43,10 +43,20 @@ def render_import_export():
                     
                     # Import using service adapter
                     if adapter.set_ideas(validated_data):
-                        # Set central node if specified
+                        # Set central node if specified - need to find the new ID
                         central_node = next((i for i in validated_data if i.get('is_central')), None)
-                        if central_node and central_node.get('id'):
-                            adapter.set_central(central_node['id'])
+                        if central_node:
+                            # Find the imported node by label since IDs have changed
+                            imported_nodes = adapter.get_ideas()
+                            for imported_node in imported_nodes:
+                                if imported_node.get('label') == central_node.get('label'):
+                                    adapter.set_central(imported_node['id'])
+                                    break
+                        
+                        # Mark file as processed to prevent re-import
+                        if 'processed_files' not in st.session_state:
+                            st.session_state['processed_files'] = set()
+                        st.session_state['processed_files'].add(uploaded.name)
                         
                         logger.info(f"Successfully imported {len(validated_data)} nodes from {uploaded.name}")
                         st.success(f"Imported {len(validated_data)} bubbles from JSON")

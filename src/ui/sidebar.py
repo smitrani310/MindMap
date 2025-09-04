@@ -23,14 +23,19 @@ def render_sidebar():
         selected_theme = st.selectbox(
             "Select Theme",
             options=list(THEMES.keys()),
-            index=list(THEMES.keys()).index(current_theme) if current_theme in THEMES else 0
+            index=list(THEMES.keys()).index(current_theme) if current_theme in THEMES else 0,
+            key="theme_selector"
         )
         
         # Update theme if changed
         if selected_theme != current_theme:
             theme_settings = {'current_theme': selected_theme}
-            adapter.update_settings(theme_settings)
-            st.rerun()
+            if adapter.update_settings(theme_settings):
+                # Update session state immediately to prevent rerun loop
+                if 'store' not in st.session_state:
+                    st.session_state['store'] = {}
+                st.session_state['store']['current_theme'] = selected_theme
+                st.rerun()
         
         # Get settings with defaults
         if 'store' in st.session_state:
@@ -107,8 +112,8 @@ def render_sidebar():
             # Save changes
             settings['custom_tags'] = custom_tags
             settings['custom_colors'] = custom_colors
-            adapter.update_settings(settings)
-            st.rerun()
+            if adapter.update_settings(settings):
+                st.rerun()
             
         # Display custom tags for removal and color editing
         if custom_tags:
@@ -136,8 +141,7 @@ def render_sidebar():
                         custom_colors['tags'] = {}
                     custom_colors['tags'][tag] = new_color
                     settings['custom_colors'] = custom_colors
-                    get_store()['settings'] = settings
-                    save_data(get_store())
+                    adapter.update_settings(settings)
                 
                 # Delete button
                 if col3.button("🗑️", key=f"remove_tag_{i}", help=f"Remove {tag}"):
@@ -147,9 +151,8 @@ def render_sidebar():
                     
                     settings['custom_tags'] = custom_tags
                     settings['custom_colors'] = custom_colors
-                    get_store()['settings'] = settings
-                    save_data(get_store())
-                    st.rerun()
+                    if adapter.update_settings(settings):
+                        st.rerun()
         else:
             st.info("No custom tags yet. Add one above.")
         
@@ -202,14 +205,20 @@ def render_sidebar():
                 )
             
             # Update urgency colors if changed
-            if (high_color != urgency_colors.get('high') or 
+            urgency_changed = (
+                high_color != urgency_colors.get('high') or 
                 medium_color != urgency_colors.get('medium') or 
-                low_color != urgency_colors.get('low')):
+                low_color != urgency_colors.get('low')
+            )
+            
+            if urgency_changed:
                 custom_colors['urgency'] = {
                     'high': high_color,
                     'medium': medium_color,
                     'low': low_color
                 }
+                settings['custom_colors'] = custom_colors
+                adapter.update_settings(settings)
         
         # Tag color pickers
         with color_tab2:
@@ -236,6 +245,9 @@ def render_sidebar():
                     # Update if changed
                     if tag_color != tag_colors.get(tag):
                         tag_colors[tag] = tag_color
+                        custom_colors['tags'] = tag_colors
+                        settings['custom_colors'] = custom_colors
+                        adapter.update_settings(settings)
             
             # Second column of built-in tags
             with tag_col2:
@@ -248,12 +260,14 @@ def render_sidebar():
                     # Update if changed
                     if tag_color != tag_colors.get(tag):
                         tag_colors[tag] = tag_color
+                        custom_colors['tags'] = tag_colors
+                        settings['custom_colors'] = custom_colors
+                        adapter.update_settings(settings)
             
             # Note about custom tags
             st.info("Custom tag colors can be changed in the Tag Management section above.")
             
-            # Update tag colors
-            custom_colors['tags'] = tag_colors
+            # Tag colors are updated individually above
         
         # Save all settings if changed
         settings_changed = (
