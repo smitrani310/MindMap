@@ -96,15 +96,25 @@ class MindMapService:
     
     def _load_data(self) -> None:
         """Load data from repository."""
+        self.logger.info("Loading data from repository...")
         result = self.repository.load()
+        
         if result.is_ok():
             self._current_data = result.data
+            self.logger.info(f"Successfully loaded data with {len(self._current_data.nodes)} nodes")
+            
+            # Log some details about the loaded nodes
+            for i, node in enumerate(self._current_data.nodes[:3]):
+                self.logger.info(f"  Node {i+1}: {node.label} (ID: {node.id})")
+            
             # Update next_id based on existing nodes
             if self._current_data.nodes:
                 self._next_id = max(node.id for node in self._current_data.nodes) + 1
+                self.logger.info(f"Set next_id to {self._next_id}")
         else:
             self.logger.error(f"Failed to load data: {result.error}")
             self._current_data = MindMapData()
+            self.logger.info("Created empty MindMapData as fallback")
     
     def _save_data(self) -> Result:
         """Save current data to repository."""
@@ -391,14 +401,42 @@ class MindMapService:
     
     def get_all_nodes(self) -> List[Node]:
         """Get all nodes in the mind map."""
-        return self._current_data.nodes
+        if self._current_data is None:
+            self.logger.warning("Current data is None, attempting to load data")
+            self._load_data()
+        
+        if self._current_data is None:
+            self.logger.error("Failed to load data, returning empty list")
+            return []
+        
+        nodes = self._current_data.nodes
+        self.logger.debug(f"get_all_nodes returning {len(nodes)} nodes")
+        
+        if not nodes:
+            self.logger.warning("No nodes in _current_data, checking data structure")
+            self.logger.warning(f"_current_data type: {type(self._current_data)}")
+            self.logger.warning(f"_current_data.nodes type: {type(self._current_data.nodes)}")
+        
+        return nodes
     
     def get_children(self, parent_id: int) -> List[Node]:
         """Get all direct children of a node."""
+        if self._current_data is None:
+            self._load_data()
+        
+        if self._current_data is None:
+            return []
+        
         return self._current_data.get_children(parent_id)
     
     def get_root_nodes(self) -> List[Node]:
         """Get all nodes that have no parent."""
+        if self._current_data is None:
+            self._load_data()
+        
+        if self._current_data is None:
+            return []
+        
         return self._current_data.get_root_nodes()
     
     def set_central_node(self, node_id: Optional[int]) -> Result:

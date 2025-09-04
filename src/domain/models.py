@@ -472,13 +472,45 @@ class MindMapData:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'MindMapData':
         """Create MindMapData from dictionary representation."""
-        nodes = [Node.from_dict(node_data) for node_data in data.get("nodes", [])]
+        # Handle backward compatibility: convert old 'ideas' format to new 'nodes' format
+        node_data_list = data.get("nodes", [])
+        
+        # If no 'nodes' key but 'ideas' exists, convert from old format
+        if not node_data_list and "ideas" in data:
+            node_data_list = []
+            for idea in data["ideas"]:
+                # Convert old idea format to new node format
+                node_dict = {
+                    "id": idea["id"],
+                    "label": idea["label"],
+                    "description": idea.get("description", ""),
+                    "position": {
+                        "x": idea.get("x", 0.0),
+                        "y": idea.get("y", 0.0)
+                    },
+                    "urgency": idea.get("urgency", "medium"),
+                    "tag": idea.get("tag", ""),
+                    "parent_id": idea.get("parent"),
+                    "edge_type": idea.get("edge_type", "default"),
+                    "size": idea.get("size", 20.0),
+                    "color": idea.get("color", "#EEEEEE"),
+                    "created_at": idea.get("created_at", datetime.now().isoformat()),
+                    "updated_at": idea.get("updated_at", datetime.now().isoformat()),
+                }
+                node_data_list.append(node_dict)
+        
+        nodes = [Node.from_dict(node_data) for node_data in node_data_list]
         settings = MindMapSettings.from_dict(data.get("settings", {}))
         metadata = MindMapMetadata.from_dict(data.get("metadata", {}))
         
+        # Handle central node ID from old format
+        central_node_id = data.get("central_node_id")
+        if central_node_id is None and "central" in data:
+            central_node_id = data["central"]
+        
         return cls(
             nodes=nodes,
-            central_node_id=data.get("central_node_id"),
+            central_node_id=central_node_id,
             settings=settings,
             metadata=metadata,
         )

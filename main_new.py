@@ -34,7 +34,7 @@ from src.message_handler import process_message_params, process_action
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -122,14 +122,24 @@ def handle_ui_actions():
 
 
 def handle_message_processing():
-    """Handle message processing with the new architecture."""
+    """Handle message processing with simple interaction system."""
     try:
-        # Process any messages from JavaScript (existing system)
+        # Use the simple canvas interaction system
+        from src.ui.simple_canvas_interaction import check_for_canvas_interactions, process_canvas_interaction
+        
+        # Check for canvas interactions
+        interaction = check_for_canvas_interactions()
+        if interaction:
+            success = process_canvas_interaction(interaction)
+            if success:
+                logger.info(f"✅ Canvas interaction processed: {interaction.get('action')}")
+                st.rerun()
+        
+        # Also check for legacy messages as fallback
         action, payload_str, current_time = process_message_params()
         
         if action:
-            # Process the action using the existing system for now
-            # TODO: Gradually migrate this to use the new service layer
+            # Process the action using the existing system as fallback
             rerun_needed = process_action(action, payload_str, current_time)
             
             if rerun_needed:
@@ -251,6 +261,8 @@ def display_architecture_info():
             except Exception as e:
                 logger.error(f"Error displaying statistics: {str(e)}")
                 st.error("Unable to load statistics")
+        
+
 
 
 def main():

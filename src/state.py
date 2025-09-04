@@ -111,14 +111,9 @@ def save_data(data):
                 node['x'] = random.uniform(-200, 200)
                 node['y'] = random.uniform(-200, 200)
         
-        # Log position data for debugging
-        position_data = {node.get('id'): (node.get('x'), node.get('y')) for node in ideas if 'id' in node}
-        logger.debug(f"Node positions before saving: {position_data}")
-        
         # Serialize the data to JSON
         with open(DATA_FILE, 'w') as f:
             json.dump(data, f, indent=2)
-        logger.debug("Save complete")
         return True
     except Exception as e:
         logger.error(f"Error saving data: {str(e)}")

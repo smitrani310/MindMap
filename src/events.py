@@ -54,11 +54,39 @@ def handle_canvas_click(payload, action):
     
     # Get all nodes with stored positions
     adapter = get_service_adapter()
+    
+    # Debug the service adapter state
+    logger.info(f"Service adapter type: {type(adapter)}")
+    logger.info(f"Service adapter initialized: {hasattr(adapter, '_initialized')}")
+    
     ideas = adapter.get_ideas()
+    logger.info(f"Raw ideas from adapter: {ideas}")
+    
+    # Try to force reload if no ideas found
+    if not ideas:
+        logger.warning("No ideas found, attempting to reload data...")
+        try:
+            # Force reload from repository
+            from src.infrastructure.repositories import get_repository
+            repo = get_repository()
+            data = repo.load()
+            logger.info(f"Repository data: {data}")
+            
+            # Try to get ideas again
+            ideas = adapter.get_ideas()
+            logger.info(f"Ideas after reload attempt: {ideas}")
+        except Exception as e:
+            logger.error(f"Failed to reload data: {e}")
+    
     nodes_with_pos = [n for n in ideas if n.get('x') is not None and n.get('y') is not None]
     
-    # Debug logging
+    # Enhanced debug logging
     logger.info(f"Total nodes: {len(ideas)}, Nodes with positions: {len(nodes_with_pos)}")
+    if ideas:
+        for i, idea in enumerate(ideas[:3]):  # Show first 3 nodes
+            logger.info(f"  Node {i+1}: ID={idea.get('id')}, Label={idea.get('label')}, Pos=({idea.get('x')}, {idea.get('y')})")
+    else:
+        logger.warning("No ideas available for canvas interaction!")
     
     canvas_action_successful = False
     

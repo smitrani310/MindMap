@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Canvas Interaction Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #debug-area { 
+            background: #f0f0f0; 
+            padding: 15px; 
+            margin: 20px 0; 
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        #test-canvas { 
+            border: 2px solid #ccc; 
+            background: white;
+            cursor: crosshair;
+        }
+        .log-entry { 
+            margin: 5px 0; 
+            padding: 5px;
+            background: white;
+            border-left: 3px solid #007acc;
+        }
+        .error { border-left-color: #ff4444; }
+        .success { border-left-color: #44ff44; }
+        button { 
+            margin: 5px; 
+            padding: 8px 15px; 
+            background: #007acc; 
+            color: white; 
+            border: none; 
+            border-radius: 3px; 
+            cursor: pointer;
+        }
+        button:hover { background: #005a99; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Canvas Interaction Debug Tool</h1>
+    
+    <p>This tool helps debug canvas interactions without the full Streamlit complexity.</p>
+    
+    <div>
+        <button onclick="clearDebugLog()">Clear Log</button>
+        <button onclick="testMessageSending()">Test Message Sending</button>
+        <button onclick="simulateNodeClick()">Simulate Node Click</button>
+        <button onclick="checkNetworkObject()">Check Network Object</button>
+    </div>
+    
+    <canvas id="test-canvas" width="600" height="400"></canvas>
+    
+    <div id="debug-area">
+        <div class="log-entry">Debug log will appear here...</div>
+    </div>
+
+    <script>
+        // Debug logging function
+        function debugLog(message, type = 'info') {
+            const debugArea = document.getElementById('debug-area');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            debugArea.appendChild(entry);
+            debugArea.scrollTop = debugArea.scrollHeight;
+            
+            // Also log to console
+            console.log(`[DEBUG] ${message}`);
+        }
+
+        // Clear debug log
+        function clearDebugLog() {
+            document.getElementById('debug-area').innerHTML = '';
+        }
+
+        // Test message sending functionality
+        function testMessageSending() {
+            debugLog('Testing message sending...', 'info');
+            
+            try {
+                // Test postMessage
+                window.parent.postMessage({
+                    source: 'network_canvas',
+                    action: 'test_message',
+                    payload: { test: true, timestamp: Date.now() }
+                }, '*');
+                debugLog('✅ postMessage sent successfully', 'success');
+            } catch (e) {
+                debugLog(`❌ postMessage failed: ${e.message}`, 'error');
+            }
+            
+            // Test localStorage
+            try {
+                localStorage.setItem('debug_test', JSON.stringify({ test: true, timestamp: Date.now() }));
+                debugLog('✅ localStorage test successful', 'success');
+            } catch (e) {
+                debugLog(`❌ localStorage failed: ${e.message}`, 'error');
+            }
+        }
+
+        // Simulate a node click
+        function simulateNodeClick() {
+            debugLog('Simulating node click at (300, 200)...', 'info');
+            
+            const payload = {
+                x: 300,
+                y: 200,
+                canvasWidth: 600,
+                canvasHeight: 400,
+                timestamp: Date.now()
+            };
+            
+            try {
+                window.parent.postMessage({
+                    source: 'network_canvas',
+                    action: 'canvas_click',
+                    payload: payload
+                }, '*');
+                debugLog('✅ Simulated click message sent', 'success');
+            } catch (e) {
+                debugLog(`❌ Simulated click failed: ${e.message}`, 'error');
+            }
+        }
+
+        // Check for network object availability
+        function checkNetworkObject() {
+            debugLog('Checking for network objects...', 'info');
+            
+            const checks = [
+                { name: 'window.visNetwork', obj: window.visNetwork },
+                { name: 'window.network', obj: window.network },
+                { name: 'window.serverNodePositions', obj: window.serverNodePositions },
+                { name: 'window.directParentCommunication', obj: window.directParentCommunication },
+                { name: 'window.positionDebug', obj: window.positionDebug }
+            ];
+            
+            checks.forEach(check => {
+                if (check.obj) {
+                    debugLog(`✅ ${check.name} is available`, 'success');
+                } else {
+                    debugLog(`❌ ${check.name} is not available`, 'error');
+                }
+            });
+            
+            // Check for mynetwork div
+            const networkDiv = document.getElementById('mynetwork');
+            if (networkDiv) {
+                debugLog('✅ mynetwork div found', 'success');
+            } else {
+                debugLog('❌ mynetwork div not found', 'error');
+            }
+        }
+
+        // Set up canvas event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            const canvas = document.getElementById('test-canvas');
+            
+            // Draw some test "nodes" on canvas
+            const ctx = canvas.getContext('2d');
+            
+            // Draw background
+            ctx.fillStyle = '#f8f9fa';
+            ctx.fillRect(0, 0, 600, 400);
+            
+            // Draw test nodes
+            const testNodes = [
+                { x: 150, y: 100, label: 'Node 1', color: '#ff6b6b' },
+                { x: 300, y: 200, label: 'Node 2', color: '#4ecdc4' },
+                { x: 450, y: 150, label: 'Node 3', color: '#45b7d1' }
+            ];
+            
+            testNodes.forEach(node => {
+                // Draw circle
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, 25, 0, 2 * Math.PI);
+                ctx.fillStyle = node.color;
+                ctx.fill();
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Draw label
+                ctx.fillStyle = '#333';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(node.label, node.x, node.y + 40);
+            });
+            
+            // Add click event listener
+            canvas.addEventListener('click', function(event) {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                
+                debugLog(`Canvas clicked at (${x}, ${y})`, 'info');
+                
+                // Check if click is near any test node
+                let nearestNode = null;
+                let minDistance = Infinity;
+                
+                testNodes.forEach((node, index) => {
+                    const distance = Math.sqrt((x - node.x) ** 2 + (y - node.y) ** 2);
+                    if (distance < 30 && distance < minDistance) {
+                        minDistance = distance;
+                        nearestNode = { ...node, index: index + 1 };
+                    }
+                });
+                
+                if (nearestNode) {
+                    debugLog(`✅ Clicked on ${nearestNode.label} (distance: ${minDistance.toFixed(1)})`, 'success');
+                    
+                    // Simulate sending message to parent
+                    try {
+                        window.parent.postMessage({
+                            source: 'network_canvas',
+                            action: 'canvas_click',
+                            payload: {
+                                x: x,
+                                y: y,
+                                canvasWidth: 600,
+                                canvasHeight: 400,
+                                nodeId: nearestNode.index,
+                                nodeLabel: nearestNode.label,
+                                timestamp: Date.now()
+                            }
+                        }, '*');
+                        debugLog('✅ Click message sent to parent', 'success');
+                    } catch (e) {
+                        debugLog(`❌ Failed to send click message: ${e.message}`, 'error');
+                    }
+                } else {
+                    debugLog('No node found near click position', 'info');
+                }
+            });
+            
+            // Add double-click listener
+            canvas.addEventListener('dblclick', function(event) {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                
+                debugLog(`Canvas double-clicked at (${x}, ${y})`, 'info');
+            });
+            
+            // Add context menu listener
+            canvas.addEventListener('contextmenu', function(event) {
+                event.preventDefault();
+                
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                
+                debugLog(`Canvas right-clicked at (${x}, ${y})`, 'info');
+                return false;
+            });
+            
+            debugLog('✅ Canvas event listeners attached', 'success');
+            debugLog('Click on the colored circles to test node selection', 'info');
+        });
+
+        // Listen for messages from parent (if any)
+        window.addEventListener('message', function(event) {
+            debugLog(`Received message from parent: ${JSON.stringify(event.data)}`, 'info');
+        });
+
+        // Initial setup
+        debugLog('🚀 Canvas debug tool initialized', 'success');
+        debugLog('Use the buttons above to run tests', 'info');
+    </script>
+</body>
+</html>

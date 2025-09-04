@@ -30,6 +30,8 @@ def render_canvas():
     # Add canvas expansion toggle
     canvas_height = render_canvas_toggle()
     
+
+    
     # Render the network visualization
     render_network_visualization(canvas_height)
     

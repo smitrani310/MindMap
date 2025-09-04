@@ -159,7 +159,7 @@ def find_closest_node(ideas: List[Dict[str, Any]], click_x: Union[int, float], c
         # Calculate Euclidean distance
         distance = ((node_canvas_x - click_x) ** 2 + (node_canvas_y - click_y) ** 2) ** 0.5
         
-        logger.debug(f"Node {node.get('id')} distance from click: {distance:.2f}")
+
         
         if distance < min_distance:
             min_distance = distance
@@ -170,8 +170,7 @@ def find_closest_node(ideas: List[Dict[str, Any]], click_x: Union[int, float], c
     node_size = closest_node.get('size', 20) if closest_node else 20
     click_threshold = base_threshold + node_size
     
-    if closest_node:
-        logger.debug(f"Closest node: {closest_node.get('id')} at distance {min_distance:.2f}, threshold: {click_threshold:.2f}")
+    # Closest node found (debug logging removed for production)
     
     return closest_node, min_distance, click_threshold
 

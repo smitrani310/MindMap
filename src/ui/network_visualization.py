@@ -64,7 +64,8 @@ def render_network_visualization(canvas_height: str) -> None:
     build_nodes_and_edges(net)
     
     # Generate and enhance HTML
-    modified_html = enhance_network_html(net.generate_html())
+    html_content = net.generate_html()
+    modified_html = enhance_network_html(html_content)
     
     # Add node position data to HTML
     modified_html = add_position_data_to_html(modified_html)
@@ -72,10 +73,10 @@ def render_network_visualization(canvas_height: str) -> None:
     # Add JavaScript utilities
     modified_html = add_javascript_utilities(modified_html)
 
-    # Render the modified HTML
+    # Render the network HTML directly (simplified approach)
     components.html(
-        modified_html, 
-        height=int(canvas_height.replace("px", "")), 
+        modified_html,
+        height=int(canvas_height.replace("px", "")),
         scrolling=False
     )
 
@@ -122,21 +123,13 @@ def add_nodes_to_network(net: Network, central_id: int, ideas: List[Dict[str, An
         settings = adapter.get_settings()
         color_mode = settings.get('color_mode', 'urgency')
         
-        # Log node and coloring details
-        node_id = n.get('id')
-        node_tag = n.get('tag', '')
-        node_urgency = n.get('urgency', 'medium')
-        logger.debug(f"Coloring node {node_id} with tag='{node_tag}', urgency='{node_urgency}', mode='{color_mode}'")
-        
         # Set color based on tag or urgency depending on color mode
         if color_mode == 'tag' and n.get('tag'):
             # Use tag color if available
             color_hex = get_tag_color(n['tag'])
-            logger.debug(f"Node {node_id}: Using tag color {color_hex} for tag '{n['tag']}'")
         else:
             # Fall back to urgency color
             color_hex = get_urgency_color(n.get('urgency', 'medium'))
-            logger.debug(f"Node {node_id}: Using urgency color {color_hex} for '{n.get('urgency', 'medium')}'")
 
         r, g, b = hex_to_rgb(color_hex)
         bg, bd = f"rgba({r},{g},{b},{RGBA_ALPHA})", f"rgba({r},{g},{b},1)"
@@ -215,13 +208,13 @@ def add_edges_to_network(net: Network, id_set: Set[int], ideas: List[Dict[str, A
 
 def enhance_network_html(html_content: str) -> str:
     """
-    Enhance the PyVis HTML with additional features.
+    Enhance the PyVis HTML with reliable communication system.
     
     Args:
         html_content: The original HTML content
         
     Returns:
-        Enhanced HTML content
+        Enhanced HTML content with reliable communication
     """
     # Create simplified HTML with direct network object access
     modified_html = html_content.replace(
@@ -239,9 +232,8 @@ def enhance_network_html(html_content: str) -> str:
             window.visNetwork = network;
         }
         
-        // Debug that will run after network creation
+        // Network initialization complete
         setTimeout(function() {
-            console.log('Network object availability check:');
             console.log('- window.visNetwork available:', window.visNetwork !== undefined);
             if (!window.visNetwork) {
                 console.log('Searching for network in canvases...');
@@ -261,38 +253,15 @@ def enhance_network_html(html_content: str) -> str:
         </script>'''
     )
 
-    # Add direct event listeners to guarantee they are attached
-    # Load the JavaScript files from the extracted modules instead of inline code
-    js_files = [
-        'src/js/message_relay.js',
-        'src/js/position_tracking.js',
-        'src/js/network_events.js'
-    ]
+    # Add the reliable communication system
+    from src.ui.reliable_canvas_communication import get_canvas_communicator
+    communicator = get_canvas_communicator()
+    reliable_js = communicator.get_enhanced_javascript()
     
-    # Read the JS files and combine them into a single script element
-    js_files_content = ""
-    for js_file in js_files:
-        try:
-            with open(js_file, 'r', encoding='utf-8') as f:
-                js_files_content += f.read() + "\n\n"
-        except Exception as e:
-            logger.error(f"Error loading JS file {js_file}: {str(e)}")
-            # Try with different encoding
-            try:
-                with open(js_file, 'r', encoding='latin-1') as f:
-                    js_files_content += f.read() + "\n\n"
-                logger.info(f"Successfully loaded {js_file} with latin-1 encoding")
-            except Exception as e2:
-                logger.error(f"Failed to load {js_file} with any encoding: {str(e2)}")
+    # Add the reliable communication JS right before the closing </body> tag
+    modified_html = modified_html.replace('</body>', reliable_js + '</body>')
     
-    direct_js = f"""
-    <script>
-    {js_files_content}
-    </script>
-    """
-
-    # Add the direct JS right before the closing </body> tag
-    modified_html = modified_html.replace('</body>', direct_js + '</body>')
+    logger.info("✅ Enhanced HTML with reliable canvas communication system")
     
     return modified_html
 

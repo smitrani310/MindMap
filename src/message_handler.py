@@ -39,6 +39,12 @@ def process_message_params():
     action = st.query_params.get('action', None)
     payload_str = st.query_params.get('payload', None)
     
+    # Debug logging for all query params
+    if st.query_params:
+        logger.debug(f"🔍 Query params: {dict(st.query_params)}")
+    else:
+        logger.debug("🔍 No query params found")
+    
     # Initialize message state
     setup_message_state()
     

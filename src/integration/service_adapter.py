@@ -49,6 +49,10 @@ class ServiceAdapter:
         # Initialize session state compatibility
         self._init_session_state()
         
+        # Mark as initialized
+        self._initialized = True
+        logger.info("ServiceAdapter initialized successfully")
+        
         logger.info("ServiceAdapter initialized with new architecture")
     
     def _init_session_state(self):
@@ -96,8 +100,24 @@ class ServiceAdapter:
     
     def get_ideas(self) -> List[Dict[str, Any]]:
         """Get all nodes in the old format for backward compatibility."""
-        nodes = self.service.get_all_nodes()
-        return [self._node_to_old_format(node) for node in nodes]
+        try:
+            nodes = self.service.get_all_nodes()
+            logger.debug(f"Service returned {len(nodes)} nodes")
+            
+            if not nodes:
+                logger.warning("No nodes returned from service, checking if data needs to be loaded")
+                # Try to force a reload
+                self.service._load_data()
+                nodes = self.service.get_all_nodes()
+                logger.debug(f"After reload attempt: {len(nodes)} nodes")
+            
+            result = [self._node_to_old_format(node) for node in nodes]
+            logger.debug(f"Converted to old format: {len(result)} ideas")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error getting ideas: {e}")
+            return []
     
     def get_central(self) -> Optional[int]:
         """Get the central node ID."""
